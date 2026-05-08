@@ -25,8 +25,10 @@ Image Instructions:
   * code:OpImageFetch and code:OpImageSparseFetch return a single texel of
     the image.
     No sampler is used.
-  * code:OpImage*Gather and code:OpImageSparse*Gather read neighboring
-    texels and <<textures-gather,return a single component>> of each.
+  * code:OpImage*Gather,
+ifdef::VK_QCOM_image_processing3[code:OpImageGatherQCOM,]
+    and code:OpImageSparse*Gather read neighboring texels and
+    <<textures-gather,return a single component>> of each.
 ifdef::VK_NV_shader_image_footprint[]
   * code:OpImageSampleFootprintNV identifies and returns information about
     the set of texels in the image that would be accessed by an equivalent
@@ -2137,16 +2139,18 @@ parameters of the sampler, respectively.
 
 SPIR-V instructions with code:Gather in the name return a vector derived
 from 4 texels in the base level of the image view.
+
 The rules for the ename:VK_FILTER_LINEAR minification filter are applied to
-identify the four selected texels.
-Each texel is then converted to an RGBA value according to
-<<images-component-substitution,component substitution>> and then
-<<textures-component-swizzle,swizzled>>.
-A four-component vector is then assembled by taking the component indicated
-by the code:Component value in the instruction from the swizzled color value
-of the four texels.
-If the operation does not use the code:ConstOffsets image operand then the
-four texels form the 2 {times} 2 rectangle used for texture filtering:
+identify the four selected texels for code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[]
+, and code:OpImageGatherQCOM with modes code:GatherH2QCOM and
+code:GatherV2QCOM
+endif::VK_QCOM_image_processing3[]
+.
+
+If an code:OpImage*Gather operation does not use the code:ConstOffsets image
+operand then the four texels form the 2 {times} 2 rectangle used for texture
+filtering:
 
 [latexmath]
 ++++
@@ -2158,8 +2162,8 @@ four texels form the 2 {times} 2 rectangle used for texture filtering:
 \end{aligned}
 ++++
 
-If the operation does use the code:ConstOffsets image operand then the
-offsets allow a custom filter to be defined:
+If an code:OpImage*Gather operation uses the code:ConstOffsets image operand
+then the offsets allow a custom filter to be defined:
 
 [latexmath]
 ++++
@@ -2170,6 +2174,76 @@ offsets allow a custom filter to be defined:
 \tau[A] &= \tau_{i0j0 + \Delta_3}[level_{base}][comp]
 \end{aligned}
 ++++
+
+ifdef::VK_QCOM_image_processing3[]
+If an code:OpImageGatherQCOM operation has a code:Mode equal to
+code:GatherH2QCOM or code:GatherV2QCOM, then it uses a predefined set of
+code:ConstOffsets.
+
+The offsets used for code:GatherH2QCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (-1, 1) \\
+\Delta_1 &= (2, 1) \\
+\Delta_2 &= (2, 0) \\
+\Delta_3 &= (-1, 0)
+\end{aligned}
+++++
+
+The offsets used for code:GatherV2QCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (0, 2) \\
+\Delta_1 &= (1, 2) \\
+\Delta_2 &= (1, -1) \\
+\Delta_3 &= (0, -1)
+\end{aligned}
+++++
+
+The rules for the ename:VK_FILTER_NEAREST minification filter are applied to
+identify the origin texel [eq]#\tau_{\{ij}}# for code:OpImageGatherQCOM with
+modes equal to code:Gather4x1QCOM and code:GatherDQCOM.
+The filter used for these modes is defined as:
+
+[latexmath]
+++++
+\begin{aligned}
+\tau[R] &= \tau_{ij + \Delta_0}[level_{base}][comp] \\
+\tau[G] &= \tau_{ij + \Delta_1}[level_{base}][comp] \\
+\tau[B] &= \tau_{ij + \Delta_2}[level_{base}][comp] \\
+\tau[A] &= \tau_{ij + \Delta_3}[level_{base}][comp]
+\end{aligned}
+++++
+
+The offsets used for code:Gather4x1QCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (0, 0) \\
+\Delta_1 &= (1, 0) \\
+\Delta_2 &= (2, 0) \\
+\Delta_3 &= (3, 0)
+\end{aligned}
+++++
+
+The offsets used for code:GatherDQCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (0, 1) \\
+\Delta_1 &= (1, 0) \\
+\Delta_2 &= (0, -1) \\
+\Delta_3 &= (-1, 0)
+\end{aligned}
+++++
+
+endif::VK_QCOM_image_processing3[]
 
 where:
 
@@ -2187,8 +2261,14 @@ comp & \,\text{from SPIR-V operand Component}
 \end{aligned}
 ++++
 
+Each texel is then converted to an RGBA value according to
+<<images-component-substitution,component substitution>> and then
+<<textures-component-swizzle,swizzled>>.
+
 ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-code:OpImage*Gather must: not be used on a sampled image with
+code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[and code:OpImageGatherQCOM]
+must: not be used on a sampled image with
 <<samplers-YCbCr-conversion,sampler {YCbCr} conversion>> enabled.
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
@@ -3278,32 +3358,65 @@ endif::VK_QCOM_image_processing2[]
 [[textures-blockmatch-sampler]]
 === Block Matching Sampler Parameters
 
-For code:opImageBlockMatchSAD and code:opImageBlockMatchSSD, the input
-code:sampler must: be created with code:addressModeU and code:addressModeV,
-equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
-ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
-ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
-The input code:sampler must: be created with code:unnormalizedCoordinates
-equal to ename:VK_TRUE.
-The input code:sampler must: be created with pname:components equal to
-ename:VK_COMPONENT_SWIZZLE_IDENTITY.
+Block matching operations must: be specified with identical samplers to use
+with the _target_ and _reference_ images, which is defined as the _input_
+sampler.
 
-
+The _input_ sampler must: be created with:
+  * For code:opImageBlockMatchSAD and code:opImageBlockMatchSSD,
+    code:addressModeU and code:addressModeV equal to
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+    ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
 ifdef::VK_QCOM_image_processing2[]
-For code:opImageBlockMatchWindowSAD and code:opImageBlockMatchWindowSSD
-instructions, the code:target sampler must: have been created with
-slink:VkSamplerBlockMatchWindowCreateInfoQCOM in the code:pNext chain.
-
-For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
-code:opImageBlockMatchGatherSAD, or
-code:opImageBlockMatchGatherSSDinstructions, the input code:sampler must: be
-created with code:addressModeU and code:addressModeV, equal to
-ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
-ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
+  * For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
+    code:opImageBlockMatchGatherSAD, or code:opImageBlockMatchGatherSSD
+    instructions, code:addressModeU and code:addressModeV equal to
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+    ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
+ifdef::VK_QCOM_image_processing3[]
+    , or if the
+    <<features-blockMatchExtendedClampToEdge,pname:blockMatchExtendedClampToEdge>>
+    feature is enabled, equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+  * For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
+    code:opImageBlockMatchGatherSAD, or code:opImageBlockMatchGatherSSD
+    instructions, with either code:addressModeU and code:addressModeV equal
+    to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, code:addressModeU and
+    code:addressModeV equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+endif::VK_QCOM_image_processing3[]
+endif::VK_QCOM_image_processing2[]
+  * pname:unnormalizedCoordinates equal to ename:VK_TRUE
+  * pname:components equal to ename:VK_COMPONENT_SWIZZLE_IDENTITY
+  * pname:minFilter equal to ename:VK_FILTER_NEAREST
+  * pname:mipmapMode equal to ename:VK_SAMPLER_MIPMAP_MODE_NEAREST
+  * pname:minLod and pname:maxLod equal to `0`
+  * pname:anisotropyEnable equal to ename:VK_FALSE
+  * pname:compareEnable equal to ename:VK_FALSE
+ifdef::VK_QCOM_image_processing2[]
+  * For code:opImageBlockMatchWindowSAD and code:opImageBlockMatchWindowSSD
+    instructions, slink:VkSamplerBlockMatchWindowCreateInfoQCOM must: be
+    included in the code:pNext chain.
 endif::VK_QCOM_image_processing2[]
 
 Other sampler states are ignored.
 
+[NOTE]
+====
+_Reference_ image does not support wrap modes and the coordinates must:
+remain inside the image.
+Application must: specify wrap modes in the sampler object because it must:
+be identical with the _target_ image's sampler object, which does support
+wrap modes.
+====
+
+The _target_ and _reference_ images must: be created with:
+  * pname:imageType equal to ename:VK_IMAGE_TYPE_2D
+  * pname:mipLevels equal to `1`
+  * pname:arrayLayers equal to `1`
+  * pname:samples equal to ename:VK_SAMPLE_COUNT_1_BIT
+  * pname:format equal to a compatible <<descriptors-blockmatch,block
+    matching format>>
+  * pname:usage equal to `VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM`
 
 [[textures-blockmatch-filteroperation]]
 === Block Matching Operation
@@ -3361,10 +3474,22 @@ coordinates are generated.
 \end{aligned}
 ++++
 
-Each reference texel coordinate latexmath:[(k,l)] in the set must: not fail
+ifdef::VK_QCOM_image_processing3[]
+If the
+<<features-blockMatchExtendedClampToEdge,pname:blockMatchExtendedClampToEdge>>
+feature is enabled, and the _input_ sampler was created with
+pname:addressModeU and pname:addressModeV equal to
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, then any reference texel
+coordinate latexmath:[(k,l)] in the set that fails
 <<textures-integer-coordinate-validation,integer texel coordinate
-validation>>.
-To avoid undefined: behavior, application shader should guarantee that the
+validation>> is an invalid texel and <<textures-border-replacement,border
+replacement>> is performed.
+Otherwise, each
+endif::VK_QCOM_image_processing3[]
+ifndef::VK_QCOM_image_processing3[Each]
+reference texel coordinate latexmath:[(k,l)] in the set must: not fail
+integer texel coordinate validation.
+To avoid undefined: behavior, application shader must: guarantee that the
 reference block is fully within the bounds of the reference image.
 
 Each pair of texel coordinates latexmath:[(i,j)] in the set selects a single
@@ -3719,9 +3844,12 @@ instructions:
     code:OpImageSparseSample* instructions.
   * (s,t,r,q,a) to (u,v,w,a) Transformation, Wrapping, and (u,v,w,a) to
     (i,j,k,l,n) Transformation And Array Layer Selection: Performed by all
-    code:OpImageSample, code:OpImageSparseSample, and code:OpImage*Gather
+    code:OpImageSample, code:OpImageSparseSample,
+ifdef::VK_QCOM_image_processing3[code:OpImageGatherQCOM,]
+    and code:OpImage*Gather instructions.
+  * Texel Gathering: Performed by code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[and code:OpImageGatherQCOM]
     instructions.
-  * Texel Gathering: Performed by code:OpImage*Gather instructions.
 ifdef::VK_NV_shader_image_footprint[]
   * Texel Footprint Evaluation: Performed by code:OpImageSampleFootprint
     instructions.

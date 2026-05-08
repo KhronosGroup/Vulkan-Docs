@@ -1,0 +1,544 @@
+// Copyright 2020-2026 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+[[gpu-performance-api]]
+= GPU Performance API Interface
+
+The GPU Performance API (GPA) interface gives access to GPU performance
+counters, streaming performance monitors (SPM), and thread traces (SQTT),
+which help analyze the performance and execution characteristics of
+applications.
+
+== GPU Performance API Objects
+
+[open,refpage='VkGpaSessionAMD',desc='Opaque handle to a GPU Performance API object',type='handles']
+--
+GPU Performance API (GPA) session objects hold the results of sampled
+performance counters and are represented by sname:VkGpaSessionAMD handles:
+
+include::{generated}/api/handles/VkGpaSessionAMD.adoc[]
+--
+
+[open,refpage='vkCreateGpaSessionAMD',desc='Create a new GPA session object',type='protos']
+--
+:refpage: vkCreateGpaSessionAMD
+:objectnameplural: GPA sessions
+:objectnamecamelcase: gpaSession
+:objectnamestruct: VkDeviceObjectReservationCreateInfo
+:objectcount: 1
+
+To create a GPA session object, call:
+
+include::{generated}/api/protos/vkCreateGpaSessionAMD.adoc[]
+
+  * pname:device is the logical device that creates the GPA session object.
+  * pname:pCreateInfo is a pointer to a slink:VkGpaSessionCreateInfoAMD
+    structure containing information about how the GPA session object is to
+    be created.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+  * pname:pGpaSession is a pointer to a handle in which the resulting GPA
+    session object is returned.
+
+include::{generated}/validity/protos/vkCreateGpaSessionAMD.adoc[]
+--
+
+[open,refpage='VkGpaSessionCreateInfoAMD',desc='Structure specifying parameters of a newly created GPA session',type='structs']
+--
+The sname:VkGpaSessionCreateInfoAMD structure is defined as:
+
+include::{generated}/api/structs/VkGpaSessionCreateInfoAMD.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:secondaryCopySource is a sname:VkGpaSessionAMD handle whose
+    results can: be copied into this session.
+
+When sampling counters inside secondary command buffers, repeated
+invocations of the same secondary command buffer causes the previous results
+to be overwritten.
+To avoid this a GPA session object's memory layout can: be cloned for use
+with multiple secondary invocations by specifying its handle in
+pname:secondaryCopySource, allowing the new GPA session object to be the
+target of a copy using flink:vkCmdCopyGpaSessionResultsAMD.
+
+include::{generated}/validity/structs/VkGpaSessionCreateInfoAMD.adoc[]
+--
+
+[open,refpage='vkDestroyGpaSessionAMD',desc='Destroy a GPA session object',type='protos']
+--
+To destroy a GPA session object, call:
+
+include::{generated}/api/protos/vkDestroyGpaSessionAMD.adoc[]
+
+  * pname:device is the logical device that destroys the GPA session.
+  * pname:gpaSession is the handle of the GPA session to destroy.
+  * pname:pAllocator controls host memory allocation as described in the
+    <<memory-allocation, Memory Allocation>> chapter.
+
+.Valid Usage
+****
+  * [[VUID-vkDestroyGpaSessionAMD-gpaSession-12408]]
+    All submitted commands that refer to pname:gpaSession must: have
+    completed execution
+****
+
+include::{generated}/validity/protos/vkDestroyGpaSessionAMD.adoc[]
+--
+
+
+== Beginning, ending, copying, and resetting a session
+
+Performance counters are sampled between calls to
+flink:vkCmdBeginGpaSessionAMD and flink:vkCmdEndGpaSessionAMD.
+As long as they are executed in order, flink:vkCmdBeginGpaSessionAMD and
+flink:vkCmdEndGpaSessionAMD can: span multiple command buffers.
+
+If a session is reused after calling flink:vkCmdEndGpaSessionAMD, the
+session must: first be reset using flink:vkResetGpaSessionAMD.
+
+[open,refpage='vkCmdBeginGpaSessionAMD',desc='Begin a GPA session',type='protos']
+--
+To begin a GPA session, call:
+
+include::{generated}/api/protos/vkCmdBeginGpaSessionAMD.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:gpaSession is the handle of the GPA session to begin.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdBeginGpaSessionAMD-gpaSession-12409]]
+    If pname:gpaSession has been used previously to begin and end a session,
+    flink:vkResetGpaSessionAMD must: have first been called
+  * [[VUID-vkCmdBeginGpaSessionAMD-commandBuffer-12410]]
+    If another GPA session has been started with
+    fname:vkCmdBeginGpaSessionAMD in pname:commandBuffer, it must: have been
+    ended using flink:vkCmdEndGpaSessionAMD before this call
+****
+
+include::{generated}/validity/protos/vkCmdBeginGpaSessionAMD.adoc[]
+--
+
+[open,refpage='vkCmdEndGpaSessionAMD',desc='End a GPA session',type='protos']
+--
+To end a GPA session, call:
+
+include::{generated}/api/protos/vkCmdEndGpaSessionAMD.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:gpaSession is the handle of the GPA session to end.
+
+.Valid Usage
+****
+  * [[VUID-vkCmdEndGpaSessionAMD-gpaSession-12411]]
+    pname:gpaSession must: have previously begun using
+    flink:vkCmdBeginGpaSessionAMD
+****
+
+include::{generated}/validity/protos/vkCmdEndGpaSessionAMD.adoc[]
+--
+
+Executing secondary command buffers multiple times, that themselves record
+results into sessions, causes their results to be overwritten.
+To prevent results from being lost due to subsequent executions, the results
+can: be copied into another session.
+
+[open,refpage='vkCmdCopyGpaSessionResultsAMD',desc='Copying GPA session results',type='protos']
+--
+
+To copy the results of a GPA session into another, call:
+
+include::{generated}/api/protos/vkCmdCopyGpaSessionResultsAMD.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:gpaSession is the handle of the GPA session that is the
+    destination of the copy.
+
+include::{generated}/validity/protos/vkCmdCopyGpaSessionResultsAMD.adoc[]
+--
+
+The source of the copy is the GPA session handle provided when
+pname:gpaSession was created.
+
+[open,refpage='vkResetGpaSessionAMD',desc='Reset a GPA session',type='protos']
+--
+To reset a GPA session for reuse, call:
+
+include::{generated}/api/protos/vkResetGpaSessionAMD.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:gpaSession is the handle of the GPA session to reset.
+
+include::{generated}/validity/protos/vkResetGpaSessionAMD.adoc[]
+--
+
+Resetting a session object has less overhead than destroying and then
+creating a new one.
+
+
+== Beginning and ending sampling
+
+Once a session has begun, samples can then be captured during the command
+buffer execution.
+
+[open,refpage='vkCmdBeginGpaSampleAMD',desc='Beginning a sample',type='protos']
+--
+To begin a GPA sample, call:
+
+include::{generated}/api/protos/vkCmdBeginGpaSampleAMD.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:gpaSession is the handle of the GPA session to record the sample.
+  * pname:pGpaSampleBeginInfo is a pointer to a
+    slink:VkGpaSampleBeginInfoAMD structure describing the sample
+    parameters.
+  * pname:pSampleID is the unique sample ID returned for this sample.
+
+include::{generated}/validity/protos/vkCmdBeginGpaSampleAMD.adoc[]
+--
+
+[open,refpage='VkGpaSampleBeginInfoAMD',desc='Structure specifying parameters of a GPA sample',type='structs']
+--
+The sname:VkGpaSampleBeginInfoAMD structure is defined as:
+
+include::{generated}/api/structs/VkGpaSampleBeginInfoAMD.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:sampleType is a elink:VkGpaSampleTypeAMD value specifying the type
+    of sample.
+  * pname:sampleInternalOperations is a boolean indicating whether internal
+    driver operations are included in the results.
+  * pname:cacheFlushOnCounterCollection is a boolean indicating whether the
+    driver should insert cache flush and invalidate events before and after
+    every sample.
+  * pname:sqShaderMaskEnable is a boolean indicating whether
+    pname:sqShaderMask specifies the shader stages to sample.
+    If ename:VK_FALSE, all shader stages are sampled.
+  * pname:sqShaderMask is a bitmask of elink:VkGpaSqShaderStageFlagBitsAMD
+    values specifying which shader stages to sample.
+    Shader stage bits that are not relevant to the specific device are
+    ignored.
+  * pname:perfCounterCount is the number of counters in the
+    pname:pPerfCounters array
+  * pname:pPerfCounters is a pointer to an array of
+    slink:VkGpaPerfCounterAMD structures specifying the counters to be
+    sampled.
+    If pname:sampleType is ename:VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD
+    pname:pPerfCounters specifies the counters that are sampled at the
+    beginning and at end of the sample period.
+    If pname:sampleType is ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD then the SPM
+    data will be added to the samples RGP data blob.
+  * pname:streamingPerfTraceSampleInterval is a value specifying the period
+    for SPM samples in cycles, and is ignored if pname:sampleType is not
+    ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD.
+  * pname:perfCounterDeviceMemoryLimit is a value specifying the maximum
+    amount of GPU memory that this sample can allocate for SPM data.
+    If pname:sampleType is not ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD this value
+    is ignored.
+  * pname:sqThreadTraceEnable is a boolean specifying whether SQTT data
+    should be included.
+    If pname:sampleType is not ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD this value
+    is ignored.
+  * pname:sqThreadTraceSuppressInstructionTokens is a boolean specifying
+    whether instruction-level SQTT tokens should be captured.
+    If ename:VK_FALSE, the amount of sample data is significantly reduced.
+    If pname:sampleType is not ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD this value
+    is ignored.
+  * pname:sqThreadTraceDeviceMemoryLimit is a value specifying the maximum
+    amount of GPU memory in bytes that this sample can allocate for the SQTT
+    buffer.
+    If `0`, the maximum size to prevent dropping tokens towards the end of
+    the sample is allocated.
+    If pname:sampleType is not ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD this value
+    is ignored.
+  * pname:timingPreSample is a tlink:VkPipelineStageFlags2 mask of pipeline
+    stages specifying where the begin timestamp should take place.
+    If pname:sampleType is not ename:VK_GPA_SAMPLE_TYPE_TIMING_AMD this
+    value is ignored.
+  * pname:timingPostSample is a tlink:VkPipelineStageFlags2 mask of pipeline
+    stages specifying where the end timestamp should take place.
+    If pname:sampleType is not ename:VK_GPA_SAMPLE_TYPE_TIMING_AMD this
+    value is ignored.
+
+.Valid Usage
+****
+  * [[VUID-VkGpaSampleBeginInfoAMD-sampleType-12412]]
+    If pname:sampleType is ename:VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD, the
+    <<features-perfCounters,
+    sname:VkPhysicalDeviceGpaFeaturesAMD::pname:perfCounters>> feature must:
+    be enabled
+  * [[VUID-VkGpaSampleBeginInfoAMD-sampleType-12413]]
+    If pname:sampleType is ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD, at least one
+    of the <<features-streamingPerfCounters,
+    sname:VkPhysicalDeviceGpaFeaturesAMD::pname:streamingPerfCounters>> or
+    <<features-sqThreadTracing,
+    sname:VkPhysicalDeviceGpaFeaturesAMD::pname:sqThreadTracing>> features
+    must: be enabled
+  * [[VUID-VkGpaSampleBeginInfoAMD-sqThreadTraceEnable-12414]]
+    If pname:sqThreadTraceEnable is ename:VK_TRUE, the
+    <<features-sqThreadTracing,
+    sname:VkPhysicalDeviceGpaFeaturesAMD::pname:sqThreadTracing>> feature
+    must: be enabled
+****
+
+include::{generated}/validity/structs/VkGpaSampleBeginInfoAMD.adoc[]
+--
+
+[open,refpage='VkGpaSampleTypeAMD',desc='Enum providing the sample type',type='enums']
+--
+Values which can: be set in slink:VkGpaSampleBeginInfoAMD::pname:sampleType
+are:
+
+include::{generated}/api/enums/VkGpaSampleTypeAMD.adoc[]
+
+  * ename:VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD specifies that one 64-bit result
+    will be returned per global performance counter, representing the
+    cumulative delta for that counter over the sample period.
+    Cumulative samples must: begin and end in the same command buffer.
+  * ename:VK_GPA_SAMPLE_TYPE_TRACE_AMD specifies that a buffer will be
+    filled with SQTT results data in RGP file format, and/or streaming
+    performance monitor data.
+    Trace samples may: span multiple command buffers.
+  * ename:VK_GPA_SAMPLE_TYPE_TIMING_AMD specifies that two 64-bit results
+    will be recorded to gather timestamp data.
+--
+
+[open,refpage='VkGpaSqShaderStageFlagBitsAMD',desc='Bitmask specifying GPU shader stage to sample',type='enums']
+--
+Bits which can: be set to control which GPU shader stages are sampled, are:
+
+include::{generated}/api/enums/VkGpaSqShaderStageFlagBitsAMD.adoc[]
+
+  * ename:VK_GPA_SQ_SHADER_STAGE_PS_BIT_AMD specifies the pixel shader
+    stage.
+  * ename:VK_GPA_SQ_SHADER_STAGE_VS_BIT_AMD specifies the vertex shader
+    stage.
+  * ename:VK_GPA_SQ_SHADER_STAGE_GS_BIT_AMD specifies the geometry shader
+    stage.
+  * ename:VK_GPA_SQ_SHADER_STAGE_ES_BIT_AMD specifies the export shader
+    stage.
+  * ename:VK_GPA_SQ_SHADER_STAGE_HS_BIT_AMD specifies the hull shader stage.
+  * ename:VK_GPA_SQ_SHADER_STAGE_LS_BIT_AMD specifies the local shader
+    stage.
+  * ename:VK_GPA_SQ_SHADER_STAGE_CS_BIT_AMD specifies the compute shader
+    stage.
+--
+
+[open,refpage='VkGpaSqShaderStageFlagsAMD',desc='Bitmask of VkGpaSqShaderStageFlagBitsAMD',type='flags']
+--
+include::{generated}/api/flags/VkGpaSqShaderStageFlagsAMD.adoc[]
+
+tname:VkGpaSqShaderStageFlagsAMD is a bitmask type for setting a mask of
+zero or more elink:VkGpaSqShaderStageFlagBitsAMD.
+--
+
+[open,refpage='VkGpaPerfCounterAMD',desc='Structure specifying parameters of a GPA sample',type='structs']
+--
+The sname:VkGpaPerfCounterAMD structure is defined as:
+
+include::{generated}/api/structs/VkGpaPerfCounterAMD.adoc[]
+
+  * pname:blockType is a elink:VkGpaPerfBlockAMD value specifying the GPU
+    block type to sample.
+  * pname:blockInstance is a value specifying which instance of the GPU
+    block to sample.
+  * pname:eventID is a value specifying the hardware-specific identifier of
+    the performance counter to sample.
+
+include::{generated}/validity/structs/VkGpaPerfCounterAMD.adoc[]
+--
+
+[open,refpage='VkGpaPerfBlockAMD',desc='Enum providing performance counter types',type='enums']
+--
+Values which can: be set in slink:VkGpaPerfCounterAMD::pname:blockType are:
+
+include::{generated}/api/enums/VkGpaPerfBlockAMD.adoc[]
+--
+
+[open,refpage='vkCmdEndGpaSampleAMD',desc='Ending a sample',type='protos']
+--
+To end a GPA sample, call:
+
+include::{generated}/api/protos/vkCmdEndGpaSampleAMD.adoc[]
+
+  * pname:commandBuffer is the command buffer into which the command will be
+    recorded.
+  * pname:gpaSession is the handle of the GPA session that is recording the
+    sample.
+  * pname:sampleID is a unique sample ID returned by a previous call to
+    flink:vkCmdBeginGpaSampleAMD.
+
+include::{generated}/validity/protos/vkCmdEndGpaSampleAMD.adoc[]
+--
+
+
+== Controlling GPU clocks
+
+For performance counters and thread tracing to produce meaningful results,
+clock control and querying is available.
+
+[open,refpage='vkSetGpaDeviceClockModeAMD',desc='Setting a device clock',type='protos']
+--
+To set or query GPU clocks, call:
+
+include::{generated}/api/protos/vkSetGpaDeviceClockModeAMD.adoc[]
+
+  * pname:device is the logical device that sets the clocks.
+  * pname:pInfo is a pointer to a slink:VkGpaDeviceClockModeInfoAMD
+    structure specifying the clock mode to set or query.
+
+.Valid Usage
+****
+  * [[VUID-vkSetGpaDeviceClockModeAMD-clockModes-12415]]
+    The <<features-clockModes,
+    sname:VkPhysicalDeviceGpaFeaturesAMD::pname:clockModes>> feature must:
+    be enabled
+****
+
+include::{generated}/validity/protos/vkSetGpaDeviceClockModeAMD.adoc[]
+--
+
+[open,refpage='VkGpaDeviceClockModeInfoAMD',desc='Structure containing returned clock ratios or clock mode to set',type='structs']
+--
+:refpage: VkGpaDeviceClockModeInfoAMD
+
+The sname:VkGpaDeviceClockModeInfoAMD structure is defined as:
+
+include::{generated}/api/structs/VkGpaDeviceClockModeInfoAMD.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:clockMode is a enum:VkGpaDeviceClockModeAMD value specify which
+    clock mode to set, or whether to query the current clocks.
+  * pname:memoryClockRatioToPeak is the returned ratio of the current memory
+    clock to the maximum memory clock, if pname:clockMode is
+    ename:VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD.
+  * pname:engineClockRatioToPeak is the returned ratio of the current engine
+    clock to the maximum engine clock, if pname:clockMode is
+    ename:VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD.
+
+If pname:clockMode is ename:VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD,
+pname:memoryClockRatioToPeak and pname:engineClockRatioToPeak are filled
+with the ratios of their current values to their maximums respectively,
+otherwise they are left unchanged.
+
+include::{generated}/validity/structs/VkGpaDeviceClockModeInfoAMD.adoc[]
+--
+
+[open,refpage='VkGpaDeviceClockModeAMD',desc='Enum providing the clock mode or query',type='enums']
+--
+Values which can: be set in ename:VkGpaDeviceClockModeAMD are:
+
+include::{generated}/api/enums/VkGpaDeviceClockModeAMD.adoc[]
+
+  * ename:VK_GPA_DEVICE_CLOCK_MODE_DEFAULT_AMD specifies that device clocks
+    and other power settings are restored to their default values.
+  * ename:VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD specifies that the current
+    clock values should be queried, with no new values set.
+  * ename:VK_GPA_DEVICE_CLOCK_MODE_PROFILING_AMD specifies that clocks are
+    set to a constant amount which is known to be power and thermal
+    sustainable.
+    The engine/memory clock ratio will be kept the same as much as possible.
+  * ename:VK_GPA_DEVICE_CLOCK_MODE_MIN_MEMORY_AMD specifies that the memory
+    clock is set to the lowest available level and the engine clock is set
+    to a thermal and power sustainable level.
+  * ename:VK_GPA_DEVICE_CLOCK_MODE_MIN_ENGINE_AMD specifies that the engine
+    clock is set to the lowest available level and the memory clock is set
+    to a thermal and power sustainable level.
+  * ename:VK_GPA_DEVICE_CLOCK_MODE_PEAK_AMD specifies that the clocks set to
+    maximum when possible and fans set to maximum.
+    Under power and thermal constraints device will clock down.
+--
+
+[open,refpage='vkGetGpaDeviceClockInfoAMD',desc='Getting device clocks and ratios',type='protos']
+--
+To query the GPU clock current values and their ratios to their maximums,
+call:
+
+include::{generated}/api/protos/vkGetGpaDeviceClockInfoAMD.adoc[]
+
+  * pname:device is the logical device that sets the clocks.
+  * pname:pInfo is a pointer to a slink:VkGpaDeviceGetClockInfoAMD structure
+    in which the clock values are returned.
+
+include::{generated}/validity/protos/vkGetGpaDeviceClockInfoAMD.adoc[]
+--
+
+[open,refpage='VkGpaDeviceGetClockInfoAMD',desc='Structure containing returned clock ratios or clock mode to set',type='structs']
+--
+:refpage: VkGpaDeviceGetClockInfoAMD
+
+The sname:VkGpaDeviceGetClockInfoAMD structure is defined as:
+
+include::{generated}/api/structs/VkGpaDeviceGetClockInfoAMD.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:memoryClockRatioToPeak is the returned ratio of the current memory
+    clock to the maximum memory clock.
+  * pname:engineClockRatioToPeak is the returned ratio of the current engine
+    clock to the maximum engine clock.
+  * pname:memoryClockFrequency is the current memory clock frequency in MHz.
+  * pname:engineClockFrequency is the current engine clock frequency in MHz.
+
+include::{generated}/validity/structs/VkGpaDeviceGetClockInfoAMD.adoc[]
+--
+
+
+== Session status and results querying
+
+[open,refpage='vkGetGpaSessionStatusAMD',desc='Getting the status of a GPA session',type='protos']
+--
+Once a GPA session has ended, its status can be queried by:
+
+include::{generated}/api/protos/vkGetGpaSessionStatusAMD.adoc[]
+
+  * pname:device is the logical device that sets the clocks.
+  * pname:gpaSession is the session whose status is queried.
+
+include::{generated}/validity/protos/vkGetGpaSessionStatusAMD.adoc[]
+--
+
+A return value of ename:VK_SUCCESS indicates that the results are available
+to be read using flink:vkGetGpaSessionResultsAMD.
+If results are not available, ename:VK_NOT_READY is returned.
+
+
+[open,refpage='vkGetGpaSessionResultsAMD',desc='Getting the status of a GPA session',type='protos']
+--
+Once a GPA session's results are available, they can be obtained by:
+
+include::{generated}/api/protos/vkGetGpaSessionResultsAMD.adoc[]
+
+  * pname:device is the logical device that sets the clocks.
+  * pname:gpaSession is the session whose results are queried.
+  * pname:sampleID is the sample ID, returned by
+    flink:vkCmdBeginGpaSampleAMD, whose results are to be queried.
+  * pname:pSizeInBytes is a pointer to a code:size_t value related to the
+    size of the results data, as described below.
+  * pname:pData is either `NULL` or a pointer to an array of
+    pname:pSizeInBytes bytes where the results will be written.
+
+include::{generated}/validity/protos/vkGetGpaSessionResultsAMD.adoc[]
+--
+
+If pname:pData is `NULL`, then the number of bytes of data in the results is
+returned in pname:pSizeInBytes.
+Otherwise, pname:pSizeInBytes must point to a variable set by the
+application to the number of elements in the pname:pData array, and on
+return the variable is overwritten with the number of bytes written to
+pname:pData.
+If the value of pname:pSizeInBytes is less than the size required to write
+the results ename:VK_INCOMPLETE will be returned instead of
+ename:VK_SUCCESS, to indicate that the results were not written.

@@ -175,8 +175,8 @@ of the following:
   * Change the number of vertices or primitives for any geometry in the
     structure.
 
+ifdef::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
 ifdef::VK_EXT_opacity_micromap[]
-
 If the original acceleration structure was built using opacity micromaps and
 ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
 was set in pname:flags, the application must: provide a micromap matching
@@ -187,30 +187,56 @@ opacity values assigned to the triangles.
 More precisely, the application must: not use an update operation to do any
 of the following:
 
-  * Remove micromaps or elink:VkOpacityMicromapSpecialIndexEXT values from a
+  * Remove micromaps or elink:VkOpacityMicromapSpecialIndexKHR values from a
     geometry which previously had them, or vice versa.
-  * Change between use of elink:VkOpacityMicromapSpecialIndexEXT values and
+  * Change between use of elink:VkOpacityMicromapSpecialIndexKHR values and
     explicit micro-map triangles.
   * Change the subdivision level or format of the micromap triangle
     associated with any acceleration-structure triangle.
 
+Acceleration structures constructed by deserialization with
+flink:vkCmdCopyMemoryToAccelerationStructureKHR and originally built with
+the
+ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
+flag must: provide a micromap deserialized using the serialized output of
+the micromap that was originally referenced by the serialized acceleration
+structure.
+
+[NOTE]
+====
+If applications need to update micromap data referenced by a deserialized
+acceleration structure, then it must originally build the acceleration
+structure with the
+ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR
+flag and perform a full micromap update.
+====
+endif::VK_EXT_opacity_micromap[]
+
 If the original acceleration structure was built using opacity micromaps and
-ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT
+ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR
 was set in pname:flags, the application must: provide a micromap to the
 update operation.
 
-If slink:VkMicromapBuildSizesInfoEXT::pname:discardable is ename:VK_FALSE, a
+A
+ifdef::VK_EXT_opacity_micromap[]
 ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
 or
-ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT
+endif::VK_EXT_opacity_micromap[]
+ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR
 operation transfers the reference in the acceleration structure to the new
-micromap.
+micromap
+ifdef::VK_EXT_opacity_micromap[]
+unless slink:VkMicromapBuildSizesInfoEXT::pname:discardable is ename:VK_TRUE
+endif::VK_EXT_opacity_micromap[]
+.
 
 If the original acceleration structure was built using opacity micromaps and
 neither opacity micromap update flag is set, the application must: provide
-the original micromap to the update operation.
+the original micromap to the update operation or the deserialized micromap
+from the original micromap's serialized data if the original acceleration
+structure was deserialized prior.
 
-endif::VK_EXT_opacity_micromap[]
+endif::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
 
 ifdef::VK_NV_displacement_micromap[]
 If the original acceleration structure was built using displacement
@@ -359,6 +385,11 @@ acceleration structure builds.
 This means that an application cannot: build a top-level acceleration
 structure in the same flink:vkCmdBuildAccelerationStructuresKHR call as the
 associated bottom-level or instance acceleration structures are being built.
+ifdef::VK_KHR_opacity_micromap[]
+Similarly, the application cannot: build a bottom-level acceleration
+structure in the same flink:vkCmdBuildAccelerationStructuresKHR call as the
+associated micromaps are being built.
+endif::VK_KHR_opacity_micromap[]
 There also cannot: be any memory aliasing between any acceleration structure
 memories or scratch memories being used by any of the builds.
 ====
@@ -371,19 +402,24 @@ reference to any acceleration structure specified by an active instance
 contained therein.
 Apart from this referencing, acceleration structures must: be fully
 self-contained.
+ifdef::VK_KHR_opacity_micromap[]
+Micromaps must: always be fully-self-contained.
+endif::VK_KHR_opacity_micromap[]
 
 The application can: reuse or free any memory which was used by the command
 as an input or as scratch without affecting the results of future commands,
 provided proper synchronization is used as described below.
 
-ifdef::VK_AMDX_dense_geometry_format[]
+ifdef::VK_KHR_opacity_micromap,VK_AMDX_dense_geometry_format[]
 [NOTE]
 ====
 A slink:VkAccelerationStructureBuildRangeInfoKHR structure is not used when
-building an acceleration structure with a geometry type of
-ename:VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX.
+building an acceleration structure with any of the following geometry types,
+and must: be NULL:
+ifdef::VK_AMDX_dense_geometry_format[  ** ename:VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX]
+ifdef::VK_KHR_opacity_micromap[  ** ename:VK_GEOMETRY_TYPE_MICROMAP_KHR]
 ====
-endif::VK_AMDX_dense_geometry_format[]
+endif::VK_KHR_opacity_micromap,VK_AMDX_dense_geometry_format[]
 
 [NOTE]
 ====
@@ -417,6 +453,10 @@ Accesses to other input buffers as identified by any used values of
 ifdef::VK_NV_ray_tracing_motion_blur[]
 slink:VkAccelerationStructureGeometryMotionTrianglesDataNV::pname:vertexData,
 endif::VK_NV_ray_tracing_motion_blur[]
+ifdef::VK_KHR_opacity_micromap[]
+slink:VkAccelerationStructureGeometryMicromapDataKHR::pname:data,
+slink:VkAccelerationStructureGeometryMicromapDataKHR::pname:triangleArray,
+endif::VK_KHR_opacity_micromap[]
 ifdef::VK_AMDX_dense_geometry_format[]
 slink:VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX::pname:compressedData,
 endif::VK_AMDX_dense_geometry_format[]
@@ -431,13 +471,164 @@ ename:VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR
 <<synchronization-access-types, access type>> of
 ename:VK_ACCESS_SHADER_READ_BIT.
 
-
 .Valid Usage
 ****
   * [[VUID-vkCmdBuildAccelerationStructuresKHR-accelerationStructure-08923]]
     The <<features-accelerationStructure,
     sname:VkPhysicalDeviceAccelerationStructureFeaturesKHR::pname:accelerationStructure>>
     feature must: be enabled
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-ppBuildRangeInfos-11543]]
+    Each element of pname:ppBuildRangeInfos[i] must: be a valid pointer to
+    an array of pname:pInfos[i].pname:geometryCount
+    sname:VkAccelerationStructureBuildRangeInfoKHR structures
+ifdef::VK_KHR_opacity_micromap,VK_AMDX_dense_geometry_format[]
+    if the pname:pInfos[i].type is not one of:
+ifdef::VK_AMDX_dense_geometry_format[  ** ename:VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX]
+ifdef::VK_KHR_opacity_micromap[  ** ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR]
+endif::VK_KHR_opacity_micromap,VK_AMDX_dense_geometry_format[]
+ifdef::VK_AMDX_dense_geometry_format[]
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-pInfos-10906]]
+    For each element of pname:pInfos[i] whose pname:pGeometries or
+    pname:ppGeometries members have a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_DENSE_GEOMETRY_FORMAT_TRIANGLES_AMDX,
+    pname:ppBuildRangeInfos[i] must: be `NULL`
+endif::VK_AMDX_dense_geometry_format[]
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-ppBuildRangeInfos-11544]]
+    For each element of pname:pInfos[i] whose pname:pGeometries or
+    pname:ppGeometries members have a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_MICROMAP_KHR, pname:ppBuildRangeInfos[i] must: be
+    `NULL`
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-mode-11545]]
+    For each element of pname:pInfos, if its pname:type member is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, its
+    pname:mode must: equal
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-srcAccelerationStructure-11546]]
+    For each element of pname:pInfos, if its pname:type member is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, its
+    pname:srcAccelerationStructure must: be dlink:VK_NULL_HANDLE
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-dstAccelerationStructure-11547]]
+    For each element of pname:pInfos, if its pname:type member is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, its
+    pname:dstAccelerationStructure member must: have been created with a
+    value of slink:VkAccelerationStructureCreateInfoKHR::pname:type equal to
+    either ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR or
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_GENERIC_KHR
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-dstAccelerationStructure-11548]]
+    The pname:dstAccelerationStructure member of any element of pname:pInfos
+    must: not be referenced by any
+    slink:VkAccelerationStructureTrianglesOpacityMicromapKHR::pname:micromap
+    member included in the pname:pNext chain of any pname:geometry.triangles
+    member of any element of pname:pGeometries or pname:ppGeometries in any
+    other element of pname:pInfos
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-dstAccelerationStructure-11549]]
+    The range of memory backing the pname:dstAccelerationStructure member of
+    any element of pname:pInfos that is accessed by this command must: not
+    overlap the memory backing any
+    slink:VkAccelerationStructureTrianglesOpacityMicromapKHR::pname:micromap
+    member included in the pname:pNext chain of any pname:geometry.triangles
+    member of any element of pname:pGeometries or pname:ppGeometries in any
+    other element of pname:pInfos, which is accessed by this command
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11550]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, its pname:data and pname:triangleArray members must:
+    be a valid basetype:VkDeviceAddress
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11551]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, the buffers from which the buffer device addresses
+    for its pname:data and pname:triangleArray members are queried must:
+    have been created with the
+    ename:VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+    usage flag
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11552]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, its pname:data and pname:triangleArray members must:
+    be a multiple of `128`
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11553]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, each element of its pname:triangleArray member must:
+    specify an access within the range of the slink:VkBuffer that pname:data
+    was retrieved from, given by [eq]#[pname:dataOffset, pname:dataOffset +
+    triangleSize]# where triangleSize is calculated using its pname:format
+    and pname:subdivisionLevel members rounded up to the nearest byte
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11554]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, the range of [eq]#[pname:triangleArray,
+    pname:triangleArray + (pname:triangleArrayStride * numTriangles)]# must:
+    be within the range of the slink:VkBuffer from which the
+    pname:triangleArray member was retrieved from, where _numTriangles_ is
+    the sum of pname:count of all elements of pname:pUsageCounts or
+    pname:ppUsageCounts
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11555]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, each element of its pname:geometry.triangleArray
+    member must: have a pname:format with a valid value from
+    ename:VkOpacityMicromapFormatKHR
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-micromap-11556]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, for each element of its pname:triangleArray member
+    with a pname:format equal to
+    ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_KHR, pname:subdivisionLevel
+    must: be less than or equal to
+    <<limits-maxOpacity2StateSubdivisionLevel,
+    pname:maxOpacity2StateSubdivisionLevel>>
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-indexBuffer-11575]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType equal to
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if its pname:geometry.triangles
+    member includes a
+    slink:VkAccelerationStructureTrianglesOpacityMicromapKHR structure in
+    its pname:pNext chain, the micromap's pname:indexType member is not
+    ename:VK_INDEX_TYPE_NONE_KHR, and pname:micromap is not
+    dlink:VK_NULL_HANDLE, for each _index_ in pname:indexBuffer[_j_] greater
+    than zero where _j_ is within the range [eq]#[0, numTrianglesInGeometry -
+    1]# where _numTrianglesInGeometry_ is equal to
+    pname:ppBuildRangeInfos[i]->primitiveCount, _index_ plus
+    pname:baseTriangle must: be less than or equal to _numTriangles_, where
+    _numTriangles_ is given by the sum of all pname:count parameters in the
+    pname:pUsageCounts or pname:ppUsageCounts provided to the micromap's
+    build command
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-indexBuffer-11577]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType equal to
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if its pname:geometry.triangles
+    member includes a
+    slink:VkAccelerationStructureTrianglesOpacityMicromapKHR structure in
+    its pname:pNext chain, and the micromap's pname:indexType member is not
+    ename:VK_INDEX_TYPE_NONE_KHR, [eq]#pname:indexBuffer +
+    (pname:indexStride * numTrianglesInGeometry)# must: be within the range
+    of the slink:VkBuffer from which the pname:indexBuffer device address
+    was obtained from where _numTrianglesInGeometry_ is equal to
+    pname:ppBuildRangeInfos[i]->primitiveCount
+  * [[VUID-vkCmdBuildAccelerationStructuresKHR-indexBuffer-11578]]
+    For each element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType equal to
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if its pname:geometry.triangles
+    member includes a
+    slink:VkAccelerationStructureTrianglesOpacityMicromapKHR structure in
+    its pname:pNext chain, the micromap's pname:indexType member is not
+    ename:VK_INDEX_TYPE_NONE_KHR, and pname:micromap is
+    dlink:VK_NULL_HANDLE, for each _index_ in pname:indexBuffer[_j_] where
+    _j_ is within the range from [eq]#[0, numTrianglesInGeometry - 1]#,
+    _index_ must: be a valid ename:VkOpacityMicromapSpecialIndexKHR value
+    where _numTrianglesInGeometry_ is equal to
+    pname:ppBuildRangeInfos[i]->primitiveCount
+endif::VK_KHR_opacity_micromap[]
 
 :maxinstancecheck: pname:ppBuildRangeInfos[i][j].pname:primitiveCount
 include::{chapters}/commonvalidity/build_acceleration_structure_common.adoc[]
@@ -485,8 +676,8 @@ include::{generated}/api/protos/vkCmdBuildAccelerationStructuresIndirectKHR.adoc
     indicating the maximum number of primitives that will be built by this
     command for each geometry.
 
-Accesses to acceleration structures, scratch buffers, vertex buffers, index
-buffers, and instance buffers must: be synchronized as with
+Accesses to any device memory referenced by this command must: be
+synchronized as with
 <<acceleration-structure-scratch,vkCmdBuildAccelerationStructuresKHR>>.
 
 Accesses to any element of pname:pIndirectDeviceAddresses must: be
@@ -539,6 +730,11 @@ include::{chapters}/commonvalidity/build_acceleration_structure_device_common.ad
     slink:VkAccelerationStructureBuildRangeInfoKHR structure located at
     [eq]#pname:pIndirectDeviceAddresses[i] {plus} (code:j {times}
     pname:pIndirectStrides[i])#
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkCmdBuildAccelerationStructuresIndirectKHR-type-11557]]
+    For any element of pname:pInfos, its pname:type member must: not be
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR
+endif::VK_KHR_opacity_micromap[]
 ****
 
 include::{generated}/validity/protos/vkCmdBuildAccelerationStructuresIndirectKHR.adoc[]
@@ -586,9 +782,10 @@ acceleration structure geometry.
 
 ifdef::VK_KHR_ray_tracing_pipeline,VK_KHR_ray_query[]
 [[acceleration-structure-geometry-index]]
-The index of each element of the pname:pGeometries or pname:ppGeometries
-members of slink:VkAccelerationStructureBuildGeometryInfoKHR is used as the
-_geometry index_ during ray traversal.
+For bottom-level acceleration structures, the index of each element of the
+pname:pGeometries or pname:ppGeometries members of
+slink:VkAccelerationStructureBuildGeometryInfoKHR is used as the _geometry
+index_ during ray traversal.
 ifdef::VK_KHR_ray_tracing_pipeline[]
 The geometry index is available in ray shaders via the
 <<interfaces-builtin-variables-raygeometryindex,code:RayGeometryIndexKHR
@@ -705,13 +902,134 @@ ifdef::VK_NV_ray_tracing_motion_blur[]
     ename:VK_ACCELERATION_STRUCTURE_TYPE_GENERIC_KHR
 endif::VK_NV_ray_tracing_motion_blur[]
 ifdef::VK_EXT_opacity_micromap[]
-  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-07334]]
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-11558]]
     If pname:flags has the
-    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR
     bit set then it must: not have the
     ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
     bit set
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-11709]]
+    If pname:flags has the
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
+    bit set, the
+    <<features-micromapEXT,sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromap>>
+    feature must: be enabled
 endif::VK_EXT_opacity_micromap[]
+ifdef::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-11710]]
+    If pname:flags has the
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR
+    bit set, the
+ifdef::VK_KHR_opacity_micromap[]
+    <<features-micromap,sname:VkPhysicalDeviceOpacityMicromapFeaturesKHR::pname:micromap>>
+endif::VK_KHR_opacity_micromap[]
+ifdef::VK_KHR_opacity_micromap+VK_EXT_opacity_micromap[or]
+ifdef::VK_EXT_opacity_micromap[]
+    <<features-micromapEXT,sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromap>>
+endif::VK_EXT_opacity_micromap[]
+    feature must: be enabled
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-11711]]
+    If pname:flags has the
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR
+    bit set, the
+ifdef::VK_KHR_opacity_micromap[]
+    <<features-micromap,sname:VkPhysicalDeviceOpacityMicromapFeaturesKHR::pname:micromap>>
+endif::VK_KHR_opacity_micromap[]
+ifdef::VK_KHR_opacity_micromap+VK_EXT_opacity_micromap[or]
+ifdef::VK_EXT_opacity_micromap[]
+    <<features-micromapEXT,sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromap>>
+endif::VK_EXT_opacity_micromap[]
+    feature must: be enabled
+endif::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-micromap-11559]]
+    If pname:type is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, the
+    <<features-micromap,sname:VkPhysicalDeviceOpacityMicromapFeaturesKHR::pname:micromap>>
+    feature must: be enabled
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-geometryCount-11560]]
+    If pname:type is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
+    pname:geometryCount must: be `1`
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-geometryType-11561]]
+    If pname:type is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, the
+    pname:geometryType member of elements of either pname:pGeometries or
+    pname:ppGeometries must: be ename:VK_GEOMETRY_TYPE_MICROMAP_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-geometryType-11707]]
+    If pname:type is not
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, the
+    pname:geometryType member of elements of either pname:pGeometries or
+    pname:ppGeometries must: not be ename:VK_GEOMETRY_TYPE_MICROMAP_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-flags-11562]]
+    If pname:type is
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR, pname:flags
+    must: only include the following bits:
+  ** ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR
+  ** ename:VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR
+  ** ename:VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR
+  ** ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-11563]]
+    If pname:flags includes
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, pname:type
+    must: be ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-format-11712]]
+    If pname:flags includes
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, for each
+    element of pname:pGeometries or pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, each element of its pname:pUsageCounts or
+    pname:ppUsageCounts members must: have its pname:format member equal to
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-subdivisionLevel-11564]]
+    If pname:flags does not include
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, for each
+    element of pname:pGeometries or pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, for each element of its pname:pUsageCounts or
+    pname:ppUsageCounts members, if its pname:format member is
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR, its pname:subdivisionLevel
+    member must: be less than or equal to
+    <<limits-maxOpacity4StateSubdivisionLevel,
+    pname:maxOpacity4StateSubdivisionLevel>>
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-subdivisionLevel-11565]]
+    If pname:flags includes
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, for each
+    element of pname:pGeometries or pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, for each element of its pname:pUsageCounts or
+    pname:ppUsageCounts members, its pname:subdivisionLevel member must: be
+    less than or equal to <<limits-maxOpacity4StateSubdivisionLevel,
+    pname:maxOpacityLossy4StateSubdivisionLevel>>
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-format-11713]]
+    If pname:flags includes
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, for each
+    element of pname:pGeometries or pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, each element of its pname:triangleArray member must:
+    have its pname:format member equal to
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-subdivisionLevel-11566]]
+    If pname:flags does not include
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, for each
+    element of pname:pGeometries or pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, for each element of its pname:triangleArray member,
+    if its pname:format member is
+    ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_KHR, its pname:subdivisionLevel
+    member must: be less than or equal to
+    <<limits-maxOpacity4StateSubdivisionLevel,
+    pname:maxOpacity4StateSubdivisionLevel>>
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-subdivisionLevel-11567]]
+    If pname:flags includes
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_MICROMAP_LOSSY_BIT_KHR, for each
+    element of pname:pGeometries or pname:ppGeometries, if it includes a
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure in its
+    pname:pNext chain, for each element of its pname:triangleArray member,
+    its pname:subdivisionLevel member must: be less than or equal to
+    <<limits-maxOpacity4StateSubdivisionLevel,
+    pname:maxOpacityLossy4StateSubdivisionLevel>>
+endif::VK_KHR_opacity_micromap[]
 ****
 include::{generated}/validity/structs/VkAccelerationStructureBuildGeometryInfoKHR.adoc[]
 --
@@ -780,6 +1098,18 @@ include::{generated}/api/structs/VkAccelerationStructureGeometryKHR.adoc[]
   * pname:flags is a bitmask of elink:VkGeometryFlagBitsKHR values
     describing additional properties of how the geometry should be built.
 
+ifdef::VK_KHR_opacity_micromap[]
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureGeometryKHR-micromap-11568]]
+    If pname:geometryType is ename:VK_GEOMETRY_TYPE_MICROMAP_KHR,
+    pname:pNext chain must: include a single
+    slink:VkAccelerationStructureGeometryMicromapDataKHR structure
+  * [[VUID-VkAccelerationStructureGeometryKHR-flags-11569]]
+    If pname:geometryType is ename:VK_GEOMETRY_TYPE_MICROMAP_KHR,
+    pname:flags must: be `0`
+****
+endif::VK_KHR_opacity_micromap[]
 include::{generated}/validity/structs/VkAccelerationStructureGeometryKHR.adoc[]
 --
 
@@ -888,6 +1218,87 @@ include::{generated}/validity/structs/VkAccelerationStructureGeometryMotionTrian
 --
 endif::VK_NV_ray_tracing_motion_blur[]
 
+ifdef::VK_KHR_opacity_micromap[]
+[open,refpage='VkAccelerationStructureTrianglesOpacityMicromapKHR',desc='Structure specifying an opacity micromap in a bottom-level acceleration structure',type='structs']
+--
+:refpage: VkAccelerationStructureTrianglesOpacityMicromapKHR
+
+The sname:VkAccelerationStructureTrianglesOpacityMicromapKHR structure is
+defined as:
+
+include::{generated}/api/structs/VkAccelerationStructureTrianglesOpacityMicromapKHR.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:indexType is the type of triangle indices used when indexing this
+    micromap
+  * pname:indexBuffer is the address containing the triangle indices
+  * pname:indexStride is the byte stride between triangle indices
+  * pname:baseTriangle is the base value added to the non-negative triangle
+    indices
+  * pname:micromap is the handle to the micromap object to include in this
+    geometry
+
+If sname:VkAccelerationStructureTrianglesOpacityMicromapKHR is included in
+the pname:pNext chain of a
+ifdef::VK_AMDX_dense_geometry_format[]
+slink:VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX or
+endif::VK_AMDX_dense_geometry_format[]
+slink:VkAccelerationStructureGeometryTrianglesDataKHR structure, that
+geometry will reference that micromap.
+
+For each triangle in the geometry, the acceleration structure build fetches
+an index from pname:indexBuffer using pname:indexType and pname:indexStride
+if present.
+If pname:indexType is ename:VK_INDEX_TYPE_NONE_KHR, then the index used is
+the index of the triangle in the geometry.
+
+If that value is the unsigned cast of one of the values from
+elink:VkOpacityMicromapSpecialIndexKHR then that triangle behaves as
+described for that special value in <<ray-opacity-micromap,Ray Opacity
+Micromap>>.
+
+Otherwise that triangle uses the opacity micromap information from
+pname:micromap at that index plus pname:baseTriangle.
+
+.Valid Usage
+****
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-indexType-11570]]
+    pname:indexType must: be
+ifdef::VK_GRAPHICS_VERSION_1_4,VK_KHR_index_type_uint8,VK_EXT_index_type_uint8[]
+    ename:VK_INDEX_TYPE_UINT8,
+endif::VK_GRAPHICS_VERSION_1_4,VK_KHR_index_type_uint8,VK_EXT_index_type_uint8[]
+    ename:VK_INDEX_TYPE_UINT16, ename:VK_INDEX_TYPE_UINT32, or
+    ename:VK_INDEX_TYPE_NONE_KHR
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-indexBuffer-11571]]
+    If pname:indexType is ename:VK_INDEX_TYPE_NONE_KHR, pname:indexBuffer
+    must: be 0
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-indexBuffer-11572]]
+    If pname:indexType is not ename:VK_INDEX_TYPE_NONE_KHR,
+    pname:indexBuffer must: be a valid basetype:VkDeviceAddress
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-indexStride-11573]]
+    If pname:indexType is not ename:VK_INDEX_TYPE_NONE_KHR,
+    pname:indexStride must: be a multiple of the size in bytes of
+    pname:indexType
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-indexStride-11574]]
+    If pname:indexType is not ename:VK_INDEX_TYPE_NONE_KHR,
+    pname:indexStride must: be less than or equal to [eq]#2^32^-1#
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-geometry-11576]]
+    If pname:indexType is ename:VK_INDEX_TYPE_NONE_KHR, for each triangle
+    index in the geometry, index plus pname:baseTriangle must: be less than
+    or equal to _numTriangles_, where _numTriangles_ is given by the sum of
+    all pname:count parameters in the pname:pUsageCounts or
+    pname:ppUsageCounts provided to the micromap's build command
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapKHR-micromap-11579]]
+    If pname:indexType is ename:VK_INDEX_TYPE_NONE_KHR, pname:micromap must:
+    not be dlink:VK_NULL_HANDLE
+****
+
+include::{generated}/validity/structs/VkAccelerationStructureTrianglesOpacityMicromapKHR.adoc[]
+--
+endif::VK_KHR_opacity_micromap[]
+
 ifdef::VK_EXT_opacity_micromap[]
 [open,refpage='VkAccelerationStructureTrianglesOpacityMicromapEXT',desc='Structure specifying an opacity micromap in a bottom-level acceleration structure',type='structs']
 --
@@ -929,17 +1340,16 @@ geometry will reference that micromap.
 For each triangle in the geometry, the acceleration structure build fetches
 an index from pname:indexBuffer using pname:indexType and pname:indexStride
 if present.
-If pname:indexBuffer is `NULL` then the index used is the index of the
-triangle in the geometry.
+If pname:indexType is ename:VK_INDEX_TYPE_NONE_KHR, then the index used is
+the index of the triangle in the geometry.
 
 If that value is the unsigned cast of one of the values from
 elink:VkOpacityMicromapSpecialIndexEXT then that triangle behaves as
 described for that special value in <<ray-opacity-micromap,Ray Opacity
 Micromap>>.
 
-Otherwise that triangle uses the opacity micromap information from
-pname:micromap at that index plus pname:baseTriangle.
-
+Otherwise that triangle uses the opacity micromap information from micromap
+at that index plus pname:baseTriangle.
 
 Only one of pname:pUsageCounts or pname:ppUsageCounts can: be a valid
 pointer, the other must: be `NULL`.
@@ -951,7 +1361,7 @@ handling must: be equal to the sum of matching pname:count provided.
 
 If pname:micromap is dlink:VK_NULL_HANDLE, then every value read from
 pname:indexBuffer must: be one of the values in
-ename:VkOpacityMicromapSpecialIndexEXT.
+elink:VkOpacityMicromapSpecialIndexEXT.
 
 .Valid Usage
 ****
@@ -968,26 +1378,70 @@ ename:VkOpacityMicromapSpecialIndexEXT.
   * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapEXT-indexType-10723]]
     If pname:indexType is not ename:VK_INDEX_TYPE_NONE_KHR, then
     pname:indexStride must: be less than or equal to [eq]#2^32^-1#
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapEXT-format-11679]]
+    If pname:micromap is not dlink:VK_NULL_HANDLE, the pname:type used to
+    construct pname:micromap is ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT,
+    the pname:format member of each element of pname:pUsageCounts or
+    pname:ppUsageCounts must: be a valid value from
+    ename:VkOpacityMicromapFormatEXT
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapEXT-subdivisionLevel-11680]]
+    If pname:micromap is not dlink:VK_NULL_HANDLE, the pname:type used to
+    build pname:micromap is ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT, for
+    each member of pname:pUsageCounts or pname:ppUsageCounts with
+    pname:format equal to ename:VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT,
+    pname:subdivisionLevel must: be less than or equal to
+    <<limits-maxOpacity2StateSubdivisionLevelEXT,
+    slink:VkPhysicalDeviceOpacityMicromapPropertiesEXT::pname:maxOpacity2StateSubdivisionLevel>>
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapEXT-subdivisionLevel-11681]]
+    If pname:micromap is not dlink:VK_NULL_HANDLE, the pname:type used to
+    build pname:micromap is ename:VK_MICROMAP_TYPE_OPACITY_MICROMAP_EXT, for
+    each member of pname:pUsageCounts or pname:ppUsageCounts with
+    pname:format equal to ename:VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT,
+    pname:subdivisionLevel must: be less than or equal to
+    <<limits-maxOpacity4StateSubdivisionLevelEXT,
+    slink:VkPhysicalDeviceOpacityMicromapPropertiesEXT::pname:maxOpacity4StateSubdivisionLevel>>
+ifdef::VK_NV_displacement_micromap[]
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapEXT-format-11682]]
+    If pname:micromap is not dlink:VK_NULL_HANDLE, the pname:type used to
+    construct pname:micromap is
+    ename:VK_MICROMAP_TYPE_DISPLACEMENT_MICROMAP_NV, the pname:format member
+    of each element of pname:pUsageCounts or pname:ppUsageCounts must: be a
+    valid value from ename:VkDisplacementMicromapFormatNV
+  * [[VUID-VkAccelerationStructureTrianglesOpacityMicromapEXT-subdivisionLevel-11683]]
+    If pname:micromap is not dlink:VK_NULL_HANDLE, the pname:type used to
+    construct pname:micromap is
+    ename:VK_MICROMAP_TYPE_DISPLACEMENT_MICROMAP_NV, for each member of
+    pname:pUsageCounts or pname:ppUsageCounts pname:subdivisionLevel must:
+    be less than or equal to
+    slink:VkPhysicalDeviceDisplacementMicromapPropertiesNV::pname:maxDisplacementMicromapSubdivisionLevel
+endif::VK_NV_displacement_micromap[]
+
 ****
 
 include::{generated}/validity/structs/VkAccelerationStructureTrianglesOpacityMicromapEXT.adoc[]
 --
+endif::VK_EXT_opacity_micromap[]
 
-[open,refpage='VkOpacityMicromapSpecialIndexEXT',desc='Enum for special indices in the opacity micromap',type='enums']
+ifdef::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
+[open,refpage='VkOpacityMicromapSpecialIndexKHR',desc='Enum for special indices in the opacity micromap',type='enums',alias="VkOpacityMicromapSpecialIndexEXT"]
 --
-:refpage: VkOpacityMicromapSpecialIndexEXT
+:refpage: VkOpacityMicromapSpecialIndexKHR
 
-The ename:VkOpacityMicromapSpecialIndexEXT enumeration is defined as:
+The ename:VkOpacityMicromapSpecialIndexKHR enumeration is defined as:
 
+include::{generated}/api/enums/VkOpacityMicromapSpecialIndexKHR.adoc[]
+
+ifdef::VK_EXT_opacity_micromap[]
 include::{generated}/api/enums/VkOpacityMicromapSpecialIndexEXT.adoc[]
+endif::VK_EXT_opacity_micromap[]
 
-  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_TRANSPARENT_EXT specifies
+  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_TRANSPARENT_KHR specifies
     that the entire triangle is fully transparent.
-  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_OPAQUE_EXT specifies that
+  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_OPAQUE_KHR specifies that
     the entire triangle is fully opaque.
-  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_TRANSPARENT_EXT
+  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_TRANSPARENT_KHR
     specifies that the entire triangle is unknown-transparent.
-  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_OPAQUE_EXT
+  * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_FULLY_UNKNOWN_OPAQUE_KHR
     specifies that the entire triangle is unknown-opaque.
 ifdef::VK_NV_cluster_acceleration_structure[]
   * ename:VK_OPACITY_MICROMAP_SPECIAL_INDEX_CLUSTER_GEOMETRY_DISABLE_OPACITY_MICROMAP_NV
@@ -999,8 +1453,22 @@ ifdef::VK_NV_cluster_acceleration_structure[]
     Cluster Geometry>>.
 endif::VK_NV_cluster_acceleration_structure[]
 --
+endif::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
 
-endif::VK_EXT_opacity_micromap[]
+ifdef::VK_KHR_opacity_micromap[]
+[open,refpage='VkAccelerationStructureSerializedBlockTypeKHR',desc='Enum for block types in a serialized acceleration structure',type='enums']
+--
+:refpage: VkAccelerationStructureSerializedBlockTypeKHR
+
+The ename:VkAccelerationStructureSerializedBlockTypeKHR enumeration is
+defined as:
+
+include::{generated}/api/enums/VkAccelerationStructureSerializedBlockTypeKHR.adoc[]
+
+  * ename:VK_ACCELERATION_STRUCTURE_SERIALIZED_BLOCK_TYPE_OPACITY_MICROMAP_KHR
+    specifies that the block contains opacity micromaps.
+--
+endif::VK_KHR_opacity_micromap[]
 
 ifdef::VK_NV_displacement_micromap[]
 [open,refpage='VkAccelerationStructureTrianglesDisplacementMicromapNV',desc='Structure specifying a displacement micromap in a bottom-level acceleration structure',type='structs']
@@ -1401,6 +1869,28 @@ If a compiler produces code that diverges from that pattern, applications
 must: employ another method to set values according to the correct bit
 pattern.
 
+.Valid Usage
+****
+ifdef::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
+  * [[VUID-VkAccelerationStructureInstanceKHR-micromap-11580]]
+    If pname:flags includes
+    ename:VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_KHR or
+    ename:VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR, the
+    <<features-micromap,sname:VkPhysicalDeviceOpacityMicromapFeaturesKHR::pname:micromap>>
+ifdef::VK_EXT_opacity_micromap[]
+    or
+    <<features-micromapEXT,sname:VkPhysicalDeviceOpacityMicromapFeaturesEXT::pname:micromap>>
+endif::VK_EXT_opacity_micromap[]
+    feature must: be enabled
+  * [[VUID-VkAccelerationStructureInstanceKHR-flags-11581]]
+    If pname:flags includes
+    ename:VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR, the
+    pname:flags used to build the acceleration structure referenced by
+    pname:accelerationStructureReference must: have included
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR
+endif::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
+****
+
 include::{generated}/validity/structs/VkAccelerationStructureInstanceKHR.adoc[]
 --
 
@@ -1433,6 +1923,14 @@ endif::VK_NV_ray_tracing[]
     to act as though ename:VK_GEOMETRY_OPAQUE_BIT_KHR were not specified on
     all geometries referenced by this instance.
     This behavior can: be overridden by the SPIR-V code:OpaqueKHR ray flag.
+ifdef::VK_EXT_opacity_micromap,VK_KHR_opacity_micromap[]
+  * ename:VK_GEOMETRY_INSTANCE_FORCE_OPACITY_MICROMAP_2_STATE_BIT_KHR forces
+    the micromap format to 2 state mode as described in
+    <<ray-opacity-micromap,traversal>>.
+  * ename:VK_GEOMETRY_INSTANCE_DISABLE_OPACITY_MICROMAPS_BIT_KHR disables
+    any opacity micromaps referenced by acceleration structures referenced
+    by this instance as described in <<ray-opacity-micromap,traversal>>.
+endif::VK_EXT_opacity_micromap,VK_KHR_opacity_micromap[]
 
 ename:VK_GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR and
 ename:VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR must: not be used in the
@@ -1785,19 +2283,6 @@ pname:numVertices specifies the sum of vertex counts across all blocks.
     If pname:format is VK_COMPRESSED_TRIANGLE_FORMAT_DGF1_AMDX, then
     pname:dataSize must: be a multiple of
     ename:VK_COMPRESSED_TRIANGLE_FORMAT_DGF1_BYTE_STRIDE_AMDX (128) bytes
-ifndef::VK_EXT_opacity_micromap[]
-  * [[VUID-VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX-pNext-10889]]
-    pname:pNext must: be `NULL`
-endif::VK_EXT_opacity_micromap[]
-ifdef::VK_EXT_opacity_micromap[]
-  * [[VUID-VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX-pNext-10890]]
-    pname:pNext must: be `NULL` or a pointer to a valid
-    slink:VkAccelerationStructureTrianglesOpacityMicromapEXT structure
-  * [[VUID-VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX-pNext-10891]]
-    If pname:pNext is a pointer to a valid
-    slink:VkAccelerationStructureTrianglesOpacityMicromapEXT structure, the
-    <<features-micromap, pname:micromap>> feature must: be enabled
-endif::VK_EXT_opacity_micromap[]
 ****
 
 include::{generated}/validity/structs/VkAccelerationStructureDenseGeometryFormatTrianglesDataAMDX.adoc[]
@@ -2240,6 +2725,15 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
     ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR, then
     the value written out is the number of bytes required by a serialized
     acceleration structure.
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+  * If pname:queryType is
+    ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR, then the value
+    written out is the number of bytes required by the acceleration
+    structure.
+  * ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR
+    specifies a <<serialized-as-header, serialization acceleration structure
+    pointer count query>>.
+endif::VK_KHR_ray_tracing_maintenance1[]
 
 .Valid Usage
 ****
@@ -2253,12 +2747,12 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
   * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-queryPool-02494]]
     The queries identified by pname:queryPool and pname:firstQuery must: be
     _unavailable_
-  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-buffer-03736]]
-    Each element of pname:pAccelerationStructures must: be bound to device
-    memory
   * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-query-04880]]
     The sum of pname:firstQuery plus pname:accelerationStructureCount must:
     be less than or equal to the number of queries in pname:queryPool
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesKHR-pAccelerationStructures-11684]]
+    All acceleration structures in pname:pAccelerationStructures must: have
+    been constructed prior to the execution of this command on the device
 include::{chapters}/commonvalidity/write_acceleration_structure_properties_common.adoc[]
 ****
 
@@ -2321,6 +2815,9 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR.
   * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-queryType-06216]]
     pname:queryType must: be
     ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_COMPACTED_SIZE_NV
+  * [[VUID-vkCmdWriteAccelerationStructuresPropertiesNV-pAccelerationStructures-11685]]
+    All acceleration structures in pname:pAccelerationStructures must: have
+    been constructed prior to the execution of this command on the device
 ****
 
 include::{generated}/validity/protos/vkCmdWriteAccelerationStructuresPropertiesNV.adoc[]
@@ -2366,6 +2863,15 @@ ename:VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR as appropriate.
   * [[VUID-vkCmdCopyAccelerationStructureKHR-src-11633]]
     The source acceleration structure pname:pInfo->src must: have been
     constructed prior to the execution of this command on the device
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkCmdCopyAccelerationStructureKHR-src-11634]]
+    If the source acceleration structure pname:pInfo->src was constructed
+    through deserialization, all micromap arrays the acceleration structure
+    references that were not replaced by an acceleration structure update
+    command must: have been deserialized using the serialized data of the
+    corresponding micromaps used to originally build the acceleration
+    structure prior to the execution of this command on the device
+endif::VK_KHR_opacity_micromap[]
 ****
 
 include::{generated}/validity/protos/vkCmdCopyAccelerationStructureKHR.adoc[]
@@ -2451,7 +2957,12 @@ endif::VK_NV_ray_tracing[]
     copy of the acceleration structure specified in pname:src into the one
     specified by pname:dst.
     The pname:dst acceleration structure must: have been created with the
-    same parameters as pname:src.
+    same parameters as pname:src
+ifdef::VK_KHR_ray_tracing_maintenance1[]
+    with the exception of pname:size, which must: at least as large as the
+    queried ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SIZE_KHR size
+endif::VK_KHR_ray_tracing_maintenance1[]
+    .
     If pname:src contains references to other acceleration structures,
     pname:dst will reference the same acceleration structures.
   * ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR creates a more
@@ -2526,17 +3037,25 @@ The defined header structure for the serialized data consists of:
     sname:VkPhysicalDeviceIDProperties::pname:driverUUID
   * ename:VK_UUID_SIZE bytes of data identifying the compatibility for
     comparison using flink:vkGetDeviceAccelerationStructureCompatibilityKHR
+
+For a top-level or bottom-level acceleration structure, this is followed by:
   * A 64-bit integer of the total size matching the value queried using
     ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_SIZE_KHR
   * A 64-bit integer of the deserialized size to be passed in to
     sname:VkAccelerationStructureCreateInfoKHR::pname:size
+
+For a top-level acceleration structure, the remainder of the serialized
+header consists of:
+
   * A 64-bit integer of the count of the number of acceleration structure
     handles following.
 ifdef::VK_KHR_ray_tracing_maintenance1[]
     This value matches the value queried using
     ename:VK_QUERY_TYPE_ACCELERATION_STRUCTURE_SERIALIZATION_BOTTOM_LEVEL_POINTERS_KHR.
 endif::VK_KHR_ray_tracing_maintenance1[]
+ifndef::VK_KHR_opacity_micromap[]
     This will be zero for a bottom-level acceleration structure.
+endif::VK_KHR_opacity_micromap[]
     For top-level acceleration structures this number is
     implementation-dependent; the number of and ordering of the handles may
     not match the instance descriptions which were used to build the
@@ -2550,6 +3069,55 @@ are tightly packed in the buffer following the count.
 The application is expected to store a mapping between those handles and the
 original application-generated bottom-level acceleration structures to
 provide when deserializing.
+
+ifdef::VK_KHR_opacity_micromap[]
+For a bottom-level acceleration structure, the remainder of the serialized
+header consists of:
+
+  * A 64-bit integer consisting of two packed 32 bit values.
+    The high 32 bits are 0xFFFFFFFF to indicate a block-based format, and
+    the low 32 bits contain the number of serialized blocks that follow
+  * For each block:
+  ** A 32-bit unsigned integer indicating the block type corresponding to
+     values in the elink:VkAccelerationStructureSerializedBlockTypeKHR
+     enumeration
+  ** A 32-bit reserved value for alignment
+  ** A 64-bit unsigned integer indicating the number of block buffer device
+     addresses that follow the block header
+  ** An array of 64-bit buffer device addresses, with the count matching the
+     previous value
+
+If the block type is
+ename:VK_ACCELERATION_STRUCTURE_SERIALIZED_BLOCK_TYPE_OPACITY_MICROMAP_KHR,
+the corresponding buffer device addresses are tightly packed in the buffer
+and match the values returned by flink:vkGetBufferDeviceAddressKHR for the
+underlying buffer objects for the opacity micromaps.
+An implementation may: either return `NULL` for a geometry with no opacity
+micromap or only return valid device address entries in the array.
+Similar to the above, the application must: provide a mapping between the
+valid buffer device addresses and the original application-generated opacity
+micromaps when deserializing.
+If the implementation returned `NULL` addresses for geometry without
+micromaps, the application must: provide `NULL` device addresses mapped to
+those when deserializing.
+
+The addresses of micromaps provided to deserializing must: be compatible
+with the micromaps that were used for building the acceleration structure
+that was serialized.
+They must: be created before deserializing with identical pname:type and
+pname:createFlags except for the
+ename:VK_ACCELERATION_STRUCTURE_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT_KHR
+flag set.
+
+Before using the deserialized acceleration structure, the micromaps must: be
+deserialized using the serialized output of the micromap that was originally
+referenced by the serialized acceleration structure, or, if the acceleration
+structure was originally built with the
+ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_KHR,
+the application may: replace the micromap with a newly constructed micromap,
+using the normal update rules.
+endif::VK_KHR_opacity_micromap[]
+
 The serialized data is written to the buffer (or read from the buffer)
 according to the host endianness.
 
@@ -2563,8 +3131,12 @@ according to the host endianness.
     pname:pInfo->dst.deviceAddress must: be a valid basetype:VkDeviceAddress
   * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-03740]]
     pname:pInfo->dst.deviceAddress must: be aligned to `256` bytes
-  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-None-03559]]
-    pname:pInfo->src must: be bound to device memory
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-11699]]
+    If pname:pInfo->src was built with a pname:type of
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
+    pname:pInfo->dst.deviceAddress must: be aligned to `128` bytes
+endif::VK_KHR_opacity_micromap[]
 ****
 
 include::{generated}/validity/protos/vkCmdCopyAccelerationStructureToMemoryKHR.adoc[]
@@ -2590,6 +3162,15 @@ include::{generated}/api/structs/VkCopyAccelerationStructureToMemoryInfoKHR.adoc
   * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-src-04959]]
     The source acceleration structure pname:src must: have been constructed
     prior to the execution of this command
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-src-11582]]
+    If the source acceleration structure pname:src was constructed through
+    deserialization, all micromap arrays the acceleration structure
+    references that were not replaced by an acceleration structure update
+    command must: have been deserialized using the serialized data of the
+    corresponding micromaps used to originally build the acceleration
+    structure prior to the execution of this command
+endif::VK_KHR_opacity_micromap[]
   * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-dst-03561]]
     The memory pointed to by pname:dst must: be at least as large as the
     serialization size of pname:src, as reported by
@@ -2599,6 +3180,12 @@ include::{generated}/api/structs/VkCopyAccelerationStructureToMemoryInfoKHR.adoc
   * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-03412]]
     pname:mode must: be
     ename:VK_COPY_ACCELERATION_STRUCTURE_MODE_SERIALIZE_KHR
+  * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-11714]]
+    The range of pname:src accessed by this command must: be fully backed by
+    physical memory
+  * [[VUID-VkCopyAccelerationStructureToMemoryInfoKHR-mode-11715]]
+    The range of pname:dst accessed by this command must: be fully backed by
+    physical memory
 ****
 
 include::{generated}/validity/structs/VkCopyAccelerationStructureToMemoryInfoKHR.adoc[]
@@ -2648,6 +3235,12 @@ structure handles filled in with the newly-queried handles to bottom level
 acceleration structures created before deserialization.
 These do not need to be built at deserialize time, but must: be created.
 
+ifdef::VK_KHR_opacity_micromap[]
+The application must: also provide any required micromap addresses in the
+header as described in
+<<serialized-as-header,fname:vkCmdCopyAccelerationStructureToMemoryKHR>>.
+endif::VK_KHR_opacity_micromap[]
+
 .Valid Usage
 ****
   * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-accelerationStructure-08927]]
@@ -2658,8 +3251,13 @@ These do not need to be built at deserialize time, but must: be created.
     pname:pInfo->src.deviceAddress must: be a valid basetype:VkDeviceAddress
   * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-pInfo-03743]]
     pname:pInfo->src.deviceAddress must: be aligned to `256` bytes
-  * [[VUID-vkCmdCopyMemoryToAccelerationStructureKHR-buffer-03745]]
-    pname:pInfo->dst must: be bound to device memory
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkCmdCopyAccelerationStructureToMemoryKHR-pInfo-11700]]
+    If the serialized acceleration structure in pname:pInfo->src was
+    originally built with a pname:type of
+    ename:VK_ACCELERATION_STRUCTURE_TYPE_OPACITY_MICROMAP_KHR,
+    pname:pInfo->src.deviceAddress must: be aligned to `128` bytes
+endif::VK_KHR_opacity_micromap[]
 ****
 
 include::{generated}/validity/protos/vkCmdCopyMemoryToAccelerationStructureKHR.adoc[]
@@ -2700,6 +3298,33 @@ include::{generated}/api/structs/VkCopyMemoryToAccelerationStructureInfoKHR.adoc
   * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-dst-03746]]
     pname:dst must: have been created with a pname:size greater than or
     equal to that used to serialize the data in pname:src
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-dst-11716]]
+    The range of pname:src accessed by this command must: be fully backed by
+    physical memory
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-dst-11717]]
+    The range of pname:dst accessed by this command must: be fully backed by
+    physical memory
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-src-11583]]
+    If the serialized acceleration structure in pname:src is bottom-level,
+    each block in the header must: have a type that corresponds to a valid
+    value in elink:VkAccelerationStructureSerializedBlockTypeKHR
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-dst-11584]]
+    If the serialized acceleration structure in pname:src is bottom-level,
+    and any block in the header has a type of
+    ename:VK_ACCELERATION_STRUCTURE_SERIALIZED_BLOCK_TYPE_OPACITY_MICROMAP_KHR
+    the
+    <<features-micromap,sname:VkPhysicalDeviceOpacityMicromapFeaturesKHR::pname:micromap>>
+    feature must: be enabled
+  * [[VUID-VkCopyMemoryToAccelerationStructureInfoKHR-dst-11585]]
+    If the serialized acceleration structure in pname:src is bottom-level,
+    every device address in each block in the header with type
+    ename:VK_ACCELERATION_STRUCTURE_SERIALIZED_BLOCK_TYPE_OPACITY_MICROMAP_KHR
+    must: point to a valid basetype:VkDeviceAddress that was retrieved by
+    flink:vkGetBufferDeviceAddressKHR for the underlying buffer objects of
+    <<serialized-as-header,compatible micromaps>> constructed on the
+    slink:VkDevice when the command is executed
+endif::VK_KHR_opacity_micromap[]
 ****
 
 include::{generated}/validity/structs/VkCopyMemoryToAccelerationStructureInfoKHR.adoc[]
@@ -4798,7 +5423,6 @@ must: be referenced using host addresses instead of device addresses.
 Applications are not required to map acceleration structure memory when
 using the host commands.
 
-
 [NOTE]
 ====
 The flink:vkBuildAccelerationStructuresKHR and
@@ -4887,6 +5511,10 @@ memories or scratch memories being used by any of the builds.
 include::{chapters}/commonvalidity/build_acceleration_structure_common.adoc[]
 include::{chapters}/commonvalidity/build_acceleration_structure_nonindirect_common.adoc[]
 include::{chapters}/commonvalidity/deferred_operations_common.adoc[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11702]]
+    Each element of pname:ppBuildRangeInfos[i] must: be a valid pointer to
+    an array of pname:pInfos[i].pname:geometryCount
+    sname:VkAccelerationStructureBuildRangeInfoKHR structures
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11703]]
     For each element of pname:pInfos, its pname:dstAccelerationStructure
     member must: have been created with
@@ -5025,6 +5653,15 @@ ifdef::VK_EXT_opacity_micromap[]
     ename:VK_INDEX_TYPE_NONE_KHR, then its pname:indexBuffer.hostAddress
     must: not be 0
 endif::VK_EXT_opacity_micromap[]
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11705]]
+    For any element of pname:pInfos[i].pname:pGeometries or
+    pname:pInfos[i].pname:ppGeometries with a pname:geometryType of
+    ename:VK_GEOMETRY_TYPE_TRIANGLES_KHR, if there is an instance of
+    slink:VkAccelerationStructureTrianglesOpacityMicromapKHR in the
+    pname:geometry.triangles.pNext chain its pname:micromap member must: be
+    dlink:VK_NULL_HANDLE
+endif::VK_KHR_opacity_micromap[]
 ifdef::VK_NV_ray_tracing_linear_swept_spheres[]
   * [[VUID-vkBuildAccelerationStructuresKHR-pInfos-11822]]
     For each element of pname:pInfos[i].pname:pGeometries or
@@ -5127,6 +5764,18 @@ ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
     pname:pInfo->dst must: be bound to memory that was not allocated with
     multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
+  * [[VUID-vkCopyAccelerationStructureKHR-src-11586]]
+    The source acceleration structure pname:pInfo->src must: have been
+    constructed prior to the execution of this command
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-vkCopyAccelerationStructureKHR-src-11587]]
+    If the source acceleration structure pname:pInfo->src was constructed
+    through deserialization, all micromap arrays the acceleration structure
+    references that were not replaced by an acceleration structure update
+    command must: have been deserialized using the serialized data of the
+    corresponding micromaps used to originally build the acceleration
+    structure prior to the execution of this command
+endif::VK_KHR_opacity_micromap[]
   * [[VUID-vkCopyAccelerationStructureKHR-src-11588]]
     pname:pInfo->src must: have been created with
     flink:vkCreateAccelerationStructureKHR
@@ -5323,6 +5972,9 @@ ifdef::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
     Each element of pname:pAccelerationStructures must: be bound to memory
     that was not allocated with multiple instances
 endif::VK_KHR_device_group,VK_BASE_VERSION_1_1[]
+  * [[VUID-vkWriteAccelerationStructuresPropertiesKHR-pAccelerationStructures-11591]]
+    All acceleration structures in pname:pAccelerationStructures must: have
+    been constructed prior to the execution of this command
 ****
 
 include::{generated}/validity/protos/vkWriteAccelerationStructuresPropertiesKHR.adoc[]

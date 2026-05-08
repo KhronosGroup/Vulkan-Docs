@@ -1,0 +1,244 @@
+// Copyright 2022-2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+include::{generated}/meta/{refprefix}VK_KHR_opacity_micromap.adoc[]
+
+=== Other Extension Metadata
+
+*Last Modified Date*::
+    2026-05-08
+*Interactions and External Dependencies*::
+  - This extension provides API support for
+    {GLSLregistry}/ext/GLSL_EXT_opacity_micromap.txt[`GLSL_EXT_opacity_micromap`]
+  - This extension provides API support for
+    {GLSLregistry}/ext/GLSL_EXT_opacity_micromap_ray_query_mode.txt[`GLSL_EXT_opacity_micromap_ray_query_mode`]
+*Contributors*::
+  - Matthew Netsch, Qualcomm Technologies, Inc
+  - Aleksandra Krstic, Qualcomm Technologies, Inc
+  - Eric Werness, NVIDIA
+  - Daniel Koch, NVIDIA
+  - Stu Smith, AMD
+  - Sven Woop, Intel
+  - Anton Berko, MediaTek
+  - Radoslaw Drabinski, Intel
+  - Simon Fenney, Imagination Technologies
+  - Andrew Garrard, Imagination Technologies
+  - Dae Kim, Imagination Technologies
+  - Fred Saucedo, Qualcomm Technologies, Inc
+  - Ramesh babu Admimula, Qualcomm Technologies, Inc
+  - Zedian Zhang, Qualcomm Technologies, Inc
+  - Hans-Kristian Arntzen, Valve
+  - Vikram Kushwaha, NVIDIA
+  - Spencer Fricke, LunarG
+  - Revanth Ponna, Qualcomm Technologies, Inc
+  - Contributors to `apiext:VK_EXT_opacity_micromap`
+
+=== Description
+
+When adding transparency to a ray traced scene, an application can choose
+between further tessellating the geometry or using an any-hit shader to
+allow the ray through specific parts of the geometry.
+These options have the downside of either significantly increasing memory
+consumption or adding runtime overhead to run shader code in the middle of
+traversal, respectively.
+
+This extension adds the ability to add an _opacity micromap_ to geometry
+when building an acceleration structure.
+The opacity micromap compactly encodes opacity information which can be read
+by the implementation to mark parts of triangles as opaque or transparent.
+The format is externally visible to allow the application to compress its
+internal geometry and surface representations into the compressed format
+ahead of time.
+The compressed format subdivides each triangle into a set of subtriangles,
+each of which can be assigned either two or four opacity values.
+These opacity values can control if a ray hitting that subtriangle is
+treated as an opaque hit, complete miss, or possible hit, depending on the
+controls described in <<ray-opacity-micromap,Ray Opacity Micromap>>.
+
+This extension provides:
+
+  * the ability to create micromaps as slink:VkAccelerationStructureKHR
+    structures
+  * the ability to build, copy, and query micromaps with the acceleration
+    structure functions, and
+  * a structure to extend
+    slink:VkAccelerationStructureGeometryTrianglesDataKHR to attach a
+    micromap to the geometry of the acceleration structure.
+
+include::{generated}/interfaces/VK_KHR_opacity_micromap.adoc[]
+
+=== Reference Code
+
+The following code illustrates an algorithm that converts the barycentric
+coordinates inside a triangle into an OMM array index:
+
+[source,c++]
+----
+uint32_t BarycentricsToSpaceFillingCurveIndex(float u, float v, uint32_t level)
+{
+    u = clamp(u, 0.0f, 1.0f);
+    v = clamp(v, 0.0f, 1.0f);
+
+    uint32_t iu, iv, iw;
+
+    // Quantize barycentric coordinates
+    float fu = u * (1u << level);
+    float fv = v * (1u << level);
+
+    iu = (uint32_t)fu;
+    iv = (uint32_t)fv;
+
+    float uf = fu - float(iu);
+    float vf = fv - float(iv);
+
+    if (iu >= (1u << level)) iu = (1u << level) - 1u;
+    if (iv >= (1u << level)) iv = (1u << level) - 1u;
+
+    uint32_t iuv = iu + iv;
+
+    if (iuv >= (1u << level))
+        iu -= iuv - (1u << level) + 1u;
+
+    iw = ~(iu + iv);
+
+    if (uf + vf >= 1.0f && iuv < (1u << level) - 1u) --iw;
+
+    uint32_t b0 = ~(iu ^ iw);
+    b0 &= ((1u << level) - 1u);
+    uint32_t t = (iu ^ iv) & b0;
+
+    uint32_t f = t;
+    f ^= f >> 1u;
+    f ^= f >> 2u;
+    f ^= f >> 4u;
+    f ^= f >> 8u;
+    uint32_t b1 = ((f ^ iu) & ~b0) | t;
+
+    // Interleave bits
+    b0 = (b0 | (b0 << 8u)) & 0x00ff00ffu;
+    b0 = (b0 | (b0 << 4u)) & 0x0f0f0f0fu;
+    b0 = (b0 | (b0 << 2u)) & 0x33333333u;
+    b0 = (b0 | (b0 << 1u)) & 0x55555555u;
+    b1 = (b1 | (b1 << 8u)) & 0x00ff00ffu;
+    b1 = (b1 | (b1 << 4u)) & 0x0f0f0f0fu;
+    b1 = (b1 | (b1 << 2u)) & 0x33333333u;
+    b1 = (b1 | (b1 << 1u)) & 0x55555555u;
+
+    return b0 | (b1 << 1u);
+}
+----
+
+=== Issues
+
+(1) Is the build actually similar to an acceleration structure build?
+--
+  * Resolved: The build should be much lighter-weight than an acceleration
+    structure build
+--
+
+(2) Why does VkMicromapUsageKHR not have type/pNext?
+--
+  * Resolved: There can be a very large number of these structures, so
+    doubling the size of these can be significant memory consumption.
+    Also, an application may be loading these directly from a file which is
+    more compatible with it being a flat structure.
+    The including structures are extensible and are probably a more suitable
+    place to add extensibility.
+--
+
+(3) Why is there a SPIR-V extension?
+--
+  * Resolved: There is a ray flag and an execution mode.
+    To be consistent with how the existing ray tracing extensions work that
+    these needs its own extension.
+--
+
+[[micromap-issues-indirect]]
+(4) Should there be indirect micromap build?
+--
+  * Resolved: Not for now.
+    There is more in-depth usage metadata required and it seems less likely
+    that something like a GPU culling system would need to change the counts
+    for a micromap.
+--
+
+(5) Should the feature struct be aliased with
+VkPhysicalDeviceOpacityMicromapFeaturesEXT?
+--
+  * Resolved: No.
+    This extension is not an exact promotion of
+    `apiext:VK_EXT_opacity_micromap` and provides significantly different
+    functionality.
+--
+
+[[micromap-issues-micromap]]
+(6) Should micromaps API be similar to the `apiext:VK_EXT_opacity_micromap`?
+--
+`apiext:VK_EXT_opacity_micromap` introduced almost an identical set of
+functionality for micromaps as acceleration structures.
+Should this promotion fold in micromaps as an acceleration structure type?
+
+  * Resolved: Yes.
+    While this is significant API breakage from the EXT, it is a better
+    design choice going forward and can eliminate significant API surface
+    area if promoted in the future.
+--
+
+[[micromap-issues-host-commands]]
+(7) Should micromaps support host commands?
+--
+  * Resolved: No.
+    Host commands are deprecated and not widely supported.
+--
+
+[[micromap-issues-create]]
+(8) Should flink:vkCreateAccelerationStructureKHR be used to create
+micromaps?
+--
+This interface that uses slink:VkBuffer to back micromaps is deprecated, but
+is still available for acceleration structure object creation.
+
+  * Resolved: No.
+    Make a new entry point that uses a device address to back micromaps and
+    other acceleration structures instead of a buffer.
+    Eliminate the ability to provide a separate capture/replay address as
+    well.
+    Top-level acceleration structures must: reference the device address
+    that backs the bottom-level acceleration structures and implementations
+    must: not expose an indirect handle.
+--
+
+(9) Should
+    ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
+    be promoted from `apiext:VK_EXT_opacity_micromap` to this extension?
+--
+ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_DATA_UPDATE_BIT_EXT
+distinguished between replacing a micromap with one of a different shape
+(ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_OPACITY_MICROMAP_UPDATE_BIT_EXT)
+and replacing one where the shape is identical and only the opacity values
+have changed (DATA_UPDATE).
+The DATA_UPDATE flag was correlated with the discardable micromap feature,
+where an implementation might embed micromap state directly in the
+acceleration structure and exploit the tighter constraint to avoid a full
+rebuild.
+However, the spec never required DATA_UPDATE to be restricted to discardable
+micromaps, and it was already legal to treat DATA_UPDATE identically to
+UPDATE.
+
+  * Resolved: No.
+    The discardable micromap feature is not promoted to this extension,
+    removing the primary motivation for DATA_UPDATE.
+    No implementation identified a meaningful optimization from the stricter
+    constraint beyond what UPDATE already provides, and no CTS coverage
+    existed for either opacity micromap update flag in the EXT.
+    Removing it is a pure API simplification with no functional loss.
+    Applications must still perform a BLAS build update when opacity
+    micromap data changes, even if only values and not structure have
+    changed.
+--
+
+=== Version History
+
+  * Revision 1, 2026-05-08 (Matthew Netsch)
+  ** Initial draft

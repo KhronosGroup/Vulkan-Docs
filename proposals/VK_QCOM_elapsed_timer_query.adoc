@@ -1,0 +1,147 @@
+// Copyright 2025-2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_QCOM_elapsed_timer_query
+:toc: left
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:glrefpage: https://registry.khronos.org/OpenGL/extensions/ARB/
+:sectnums:
+
+This document details an extension that allows the application to get the amount of time that the device spent on executing gpu commands.
+
+== Problem Statement
+
+Vulkan 1.0 added timestamp queries to the API which allows an application to calculate how long sections of GPU commands take on the device by comparing timestamps.
+
+Comparing timestamps on tilers inside render passes may not be meaningful, likely either resulting in the elapsed time for a single tile or a near zero value.
+Either way, it may result in applications profiling these commands to drastically underestimate their impact to the frame.
+
+== Solution Space
+
+link:{glrefpage}ARB_timer_query.txt[ARB_timer_query] in OpenGL allows the implementation to calculate and write out the elapsed time to the query pool. While it did
+not make such guarantees for tilers, this interface is the most feasible solution where tilers are given the ability accumulate and record the correct time.
+
+== Proposal
+
+This extension adds a new query type to write out the elapsed time between a set of commands.
+
+[source,c]
+----
+VK_QUERY_TYPE_TIME_ELAPSED_QCOM = 1000173000
+----
+
+Unlike `VK_QUERY_TYPE_TIMESTAMP`, the time elapsed query uses xref:{refpages}vkCmdBeginQuery.html[vkCmdBeginQuery] and
+xref:{refpages}vkCmdEndQuery.html[vkCmdEndQuery] to record the section to profile.
+
+Time elapsed queries measure the device execution time between `vkCmdBeginQuery` and `vkCmdEndQuery`. When these commands are submitted to the queue, it defines an execution
+dependency on commands that were submitted before it, and the starting or stopping of the timer.
+
+There is no implicit execution barrier between the starting or stopping of the timer and the commands after it in submission order. This means that the command being profiled,
+that is the command between the begin and end commands, may start before the timer is started due to pipelining, potentially excluding the execution time overlapping the
+prior command and the profiled command.
+
+This can be desirable in order to get a more accurate frame cost of the profiled command, the cost not hidden by pipelining, and
+does not need to cause the pipeline to stall to do so, reflecting a more accurate overall time by minimizing the effect of observation on the system. However, if it is
+desired to get the actual total cost of the profiled command, the application must insert an execution dependency. The execution dependency should be inserted prior to the
+begin query, and include the appropriate synchronization scopes between the profiled command and the prior command that the application wishes to measure any overlap with.
+See <<elapsedtimerquery-example,example>>.
+
+If an overflow occurs while measuring the elapsed time, the resulting value is undefined. Implementations should use enough bits internally to make overflows unlikely to happen.
+Applications should profile operations by taking multiple measurements and rejecting outliers.
+
+The final result is written in the same units as timestamps. Applications need to use `VkPhysicalDeviceLimits::timestampPeriod` to convert the result to nanoseconds.
+These queries are valid in the same queues where timestamp queries are valid, using the `VkQueueFamilyProperties::timestampValidBits` and `timestampComputeAndGraphics` properties to determine.
+
+When executing in a render pass that has multiview enabled, the total elapsed time will be distributed among the view query indices in an implementation-dependent manner. The sum of the results
+in all of the view query indices must accurately reflect the total elapsed time executing the commands for all views.
+
+=== Device Features
+
+The following features are exposed:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceElapsedTimerQueryFeaturesQCOM {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           elapsedTimerQuery;
+} VkPhysicalDeviceElapsedTimerQueryFeaturesQCOM;
+----
+
+The `elapsedTimerQuery` feature is required and must be enabled in order to record queries using `VK_QUERY_TYPE_TIME_ELAPSED_QCOM`.
+
+[[elapsedtimerquery-example]]
+=== Example
+
+[source,c]
+----
+
+static const uint32_t MaxQueries = 2;
+
+VkQueryPool           queryPool;
+VkQueryPoolCreateInfo createInfo =
+{
+	.sType      = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+	.queryType  = VK_QUERY_TYPE_TIME_ELAPSED_QCOM,
+	.queryCount = MaxQueries,
+	...
+};
+
+vkCreateQueryPool(device, &createInfo, NULL, &queryPool);
+
+...
+
+uint32_t queryIndex = 0;
+
+vkCmdResetQueryPool(cmdBuf, queryPool, 0, MaxQueries);
+
+vkCmdBeginRendering(cmdBuf, &renderingInfo);
+
+vkCmdBeginQuery(cmdBuf, queryPool, queryIndex, 0);
+vkCmdDraw(cmdBuf, ...);
+vkCmdEndQuery(cmdBuf, queryPool, queryIndex++);
+
+// Insert pipeline barrier/event here with scopes specifying the first draw and the second draw
+// commands if want to measure the total execution time of the second draw. Otherwise,
+// vkCmdBeginQuery below will only start once the first draw completes execution, even
+// if that is after the second draw starts. It can be desirable though to not
+// insert this barrier and measure the actual frame cost of the second draw by not including
+// the time hidden by pipelining, and to reduce the effect of observation on the system.
+
+vkCmdBeginQuery(cmdBuf, queryPool, queryIndex, 0);
+vkCmdDraw(cmdBuf, ...);
+vkCmdEndQuery(cmdBuf, queryPool, queryIndex++);
+
+vkCmdEndRendering(cmdBuf);
+
+...
+
+VkSubmitInfo submitInfo =
+{
+    .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+	.commandBufferCount = 1,
+	.pCommandBuffers    = &cmdBuf,
+	...
+};
+
+vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+vkQueueWaitIdle(queue);
+
+uint64_t results[MaxQueries];
+
+vkGetQueryPoolResults(device,
+                      queryPool,
+					  0,
+					  queryIndex,
+					  sizeof(results),
+					  results,
+					  sizeof(results[0]),
+					  VK_QUERY_RESULT_64_BIT);
+
+for (uint32_t i = 0; i < queryIndex; i++)
+{
+	printf("Draw %u took %fns\n", i, results[i] * limits.timestampPeriod);
+}
+
+----
