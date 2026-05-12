@@ -445,9 +445,14 @@ class DocFile:
                 raise RuntimeError(f'Will not overwrite {text}: {path}')
 
         dir = os.path.dirname(path)
-        if not os.path.exists(dir):
-            # print(f'Creating {text} directory {dir}')
-            os.makedirs(dir)
+        # This used to only create the directory if os.path.exists(dir)
+        # failed, but this seemed to encounter race conditions with
+        # os.makedirs(dir) FileExistsError exceptions, even though there's
+        # no apparent parallelism that might cause it.
+        # Instead, call makedirs with exist_ok=True.
+
+        # print(f'Creating {text} directory {dir}')
+        os.makedirs(dir, exist_ok=True)
 
     def rewriteFile(self, overwrite = True, pageHeaders = None):
         """Write source file to component directory. Images are just symlinked
