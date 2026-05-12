@@ -447,7 +447,7 @@ class DocFile:
         dir = os.path.dirname(path)
         # This used to only create the directory if os.path.exists(dir)
         # failed, but this seemed to encounter race conditions with
-        # os.makedirs(dir) FileExistsError exceptions, even though there's
+        # os.makedirs(dir) FileExistsError exceptions, even though there is
         # no apparent parallelism that might cause it.
         # Instead, call makedirs with exist_ok=True.
 
