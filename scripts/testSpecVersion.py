@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-#
 # Copyright 2017-2026 The Khronos Group Inc.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -47,6 +46,7 @@ remapBranchName = {
     '3955-ci' : [ 'VK_KHR_xlib_surface' ],
     'jbolz_coopmat2' : [ 'VK_NV_cooperative_matrix2' ],
     'VK_NV_vertex_attribute_robustness' : [ 'VK_EXT_vertex_attribute_robustness' ],
+    'VK_KHR_image_and_format_flags' : [ 'VK_KHR_extended_flags' ],
     'VK_NV_4_Extensions' : [
         'VK_NV_cooperative_vector',
         'VK_NV_cluster_acceleration_structure',
