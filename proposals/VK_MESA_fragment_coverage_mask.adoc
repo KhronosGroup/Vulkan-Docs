@@ -1,0 +1,113 @@
+// Copyright 2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_MESA_fragment_coverage_mask
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:sectnums:
+
+This document describes a proposal for a new fragment shader input
+built-in that exposes the complete coverage mask of a fragment, regardless
+of the fragment shader's execution mode.
+
+
+== Problem Statement
+
+The existing +SampleMask+ input built-in is intended to provide the set
+of samples that contribute to a fragment.
+However, when a fragment shader executes in a per-sample shading mode -
+e.g. when a fragment shader input is decorated with +SampleId+ or
++SamplePosition+ - +SampleMask+ is masked to only include the bits
+corresponding to the specific sample(s) currently being processed by that
+invocation.
+In the case of full per-sample shading (one invocation per sample), this
+results in only a single bit being set.
+When a sample shading rate is specified (e.g. via Vulkan's
+*minSampleShading* parameter), an invocation *may* process a subset of
+samples, and +SampleMask+ will contain the corresponding subset of
+bits.
+
+This constrained behavior makes it impossible for the shader to
+determine the entire set of samples covered by the fragment.
+Specifically, it is impossible to directly map the functionality of the
+input coverage mask in the D3D10 API, making it very difficult to port
+some D3D10 shaders to SPIR-V.
+Furthermore, when per-sample shading is triggered by a sample shading
+rate rather than by the use of +SampleId+ or +SamplePosition+,
+those built-in variables are not available, making it impossible to
+derive the full coverage mask from +SampleMask+ alone.
+
+
+== Solution Space
+
+There are a few options for exposing the complete coverage mask:
+
+  . Change the semantics of +SampleMask+ to always contain the full
+    coverage mask.
+    This is not viable - it would silently break existing shaders that
+    rely on the current per-invocation behavior.
+  . Add an execution mode that toggles +SampleMask+ between the
+    current behavior and the new full-coverage behavior.
+    This is workable but conflates two semantically distinct values into
+    a single name, complicating shader code that needs both, and
+    introducing a global mode where a per-variable distinction would be
+    cleaner.
+  . Introduce a new built-in input that always contains the full
+    coverage mask, leaving +SampleMask+ unchanged.
+    Selected.
+
+A new built-in is the cleanest mapping to the D3D10 input coverage mask,
+keeps the per-sample semantics of +SampleMask+ intact, and lets a
+shader access both values in the same invocation if needed.
+
+
+== Proposal
+
+=== New SPIR-V capability and built-in
+
+A new SPIR-V capability, +FragmentCoverageMESA+, and a new fragment
+shader input built-in, +FragmentCoverageMaskMESA+, are introduced by
+the `SPV_MESA_fragment_coverage_mask` SPIR-V extension.
+
+A variable in the +Input+ storage class decorated with
++FragmentCoverageMaskMESA+ contains the complete set of samples
+covered by the fragment, regardless of the fragment shader's execution
+mode.
+Bits are mapped to samples in the same manner as +SampleMask+: bit B
+of mask M corresponds to sample [eq]#32 {times} M {plus} B#.
+
+Note that when +SampleId+ is available, fragment shaders using
++FragmentCoverageMaskMESA+ can recover the value of +SampleMask+
+from +FragmentCoverageMaskMESA+ by computing a bitwise AND with a bit
+set at position +SampleId+.
+
+=== New Vulkan feature
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceFragmentCoverageMaskFeaturesMESA {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           fragmentCoverageMask;
+} VkPhysicalDeviceFragmentCoverageMaskFeaturesMESA;
+----
+
+The *fragmentCoverageMask* feature indicates whether the
+implementation supports the +FragmentCoverageMESA+ capability and the
++FragmentCoverageMaskMESA+ built-in in fragment shaders consumed by
+the implementation.
+
+
+== Issues
+
+=== How does this extension interact with +PostDepthCoverage+?
+
+*RESOLVED*: +FragmentCoverageMaskMESA+ effectively contains the union
+of the +SampleMask+ values across all concurrent per-sample shader
+invocations.
+If the +PostDepthCoverage+ execution mode is declared (along with
++EarlyFragmentTests+), +FragmentCoverageMaskMESA+ reflects the
+coverage after the early fragment tests are applied, mirroring the
+behavior +SampleMask+ has under +PostDepthCoverage+.
