@@ -443,8 +443,8 @@ Intersection candidates can: also be culled based on their opacity.
 
 ifdef::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
 If the geometry includes an opacity micromap, the intersection candidate is
-determined as opaque or non-opaque as described in
-<<ray-opacity-micromap,Ray Opacity Micromap>>.
+determined as opaque or non-opaque as described in <<ray-opacity-micromap,
+Ray Opacity Micromap>>.
 If the result of the opacity micromap operation is __ignored__, the
 candidate is considered neither opaque or non-opaque and execution instead
 proceeds with enumerating the next candidate.
@@ -642,6 +642,23 @@ determine the eventual hit result.
 Candidates generated from AABB intersections run through the same
 confirmation process as triangle hits.
 
+ifdef::VK_KHR_ray_query[]
+For ray queries, the candidate intersection and committed intersection are
+distinct states.
+A candidate intersection is available only while code:OpRayQueryProceedKHR
+has returned code:true, and identifies the intersection currently requiring
+shader evaluation.
+Calling code:OpRayQueryGenerateIntersectionKHR or
+code:OpRayQueryConfirmIntersectionKHR confirms a hit for
+<<ray-closest-hit-determination, Ray Closest Hit Determination>>, but does
+not by itself complete traversal.
+If that confirmed hit becomes the current closest hit, it becomes the ray
+query's committed intersection.
+The committed intersection is the closest recorded hit so far, can: be
+queried before traversal is complete, and may: be replaced by a later
+confirmed hit that is closer.
+endif::VK_KHR_ray_query[]
+
 
 === AABB Intersection Candidates
 
@@ -689,9 +706,10 @@ If the ray was traced with code:OpRayQueryProceedKHR, control is returned to
 the shader which executed code:OpRayQueryProceedKHR, returning code:true.
 The resulting ray query has a candidate intersection type of
 code:RayQueryCandidateIntersectionAABBKHR.
-code:OpRayQueryGenerateIntersectionKHR can: be called to commit a new
-intersection candidate with committed intersection type of
-code:RayQueryCommittedIntersectionGeneratedKHR.
+code:OpRayQueryGenerateIntersectionKHR can: be called to report a generated
+hit for <<ray-closest-hit-determination, Ray Closest Hit Determination>>.
+If that hit becomes the current closest hit, the ray query's committed
+intersection type is code:RayQueryCommittedIntersectionGeneratedKHR.
 Further ray query processing can: be continued by executing
 code:OpRayQueryProceedKHR with the same ray query, or intersection can: be
 terminated with code:OpRayQueryTerminateKHR.
@@ -738,8 +756,10 @@ As only triangle candidates participate in this operation with ray queries,
 the resulting candidate intersection type is always
 code:RayQueryCandidateIntersectionTriangleKHR.
 code:OpRayQueryConfirmIntersectionKHR can: be called on the ray query to
-confirm the candidate as a hit with committed intersection type of
-code:RayQueryCommittedIntersectionTriangleKHR.
+confirm the candidate as a hit for <<ray-closest-hit-determination, Ray
+Closest Hit Determination>>.
+If that hit becomes the current closest hit, the ray query's committed
+intersection type is code:RayQueryCommittedIntersectionTriangleKHR.
 Further ray query processing can: be continued by executing
 code:OpRayQueryProceedKHR with the same ray query, or intersection can: be
 terminated with code:OpRayQueryTerminateKHR.
@@ -769,6 +789,16 @@ the parametric distance along the ray at which the intersection occurred.
     of that candidate occurs.
   * If [eq]#t = t~max~#, the candidate may: be set as the current closest
     hit or dropped.
+
+ifdef::VK_KHR_ray_query[]
+For ray queries, the current closest hit is the current committed
+intersection.
+When a confirmed hit is set as the current closest hit, values returned by
+code:OpRayQueryGetIntersection*KHR instructions with `Intersection` set to
+code:RayQueryCommittedIntersectionKHR are updated to describe that hit.
+If no closest hit has been identified, the committed intersection type is
+code:RayQueryCommittedIntersectionNoneKHR.
+endif::VK_KHR_ray_query[]
 
 If code:TerminateOnFirstHitKHR was included in the `Ray Flags` used to trace
 the ray, once the first hit is confirmed, the ray trace is terminated.
@@ -810,8 +840,10 @@ endif::VK_KHR_ray_tracing_pipeline[]
 ifdef::VK_KHR_ray_query[]
 If the ray was traced with code:OpRayQueryProceedKHR, control is returned to
 the shader which executed code:OpRayQueryProceedKHR, returning code:false.
-If a closest hit was identified by <<ray-closest-hit-determination>>, the
-ray query will now have a committed intersection type of
+No candidate intersection is available after this result is returned.
+If a closest hit was identified by <<ray-closest-hit-determination, Ray
+Closest Hit Determination>>, the ray query's committed intersection is the
+final result and has a committed intersection type of
 code:RayQueryCommittedIntersectionGeneratedKHR or
 code:RayQueryCommittedIntersectionTriangleKHR.
 If no closest hit was identified, the committed intersection type will be
