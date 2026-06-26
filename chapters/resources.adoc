@@ -11124,7 +11124,18 @@ Constraints on the values returned for tensor resources are:
     dedicated allocation, as reported by
     flink:vkGetPhysicalDeviceExternalTensorPropertiesARM in
     sname:VkExternalTensorPropertiesARM::pname:externalMemoryProperties.externalMemoryFeatures.
-  * pname:requiresDedicatedAllocation will otherwise be ename:VK_FALSE.
+ifdef::VK_ARM_tensor_controls[]
+  * pname:requiresDedicatedAllocation will be ename:VK_TRUE if the
+    slink:VkTensorDescriptionARM::pname:tiling provided via the
+    slink:VkTensorCreateInfoARM structure for the call to
+    flink:vkCreateTensorARM used to create the tensor being queried was
+    ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_64K_ARM.
+endif::VK_ARM_tensor_controls[]
+  * pname:requiresDedicatedAllocation will
+ifdef::VK_ARM_tensor_controls[]
+    otherwise
+endif::VK_ARM_tensor_controls[]
+    be ename:VK_FALSE.
   * When the implementation sets pname:requiresDedicatedAllocation to
     ename:VK_TRUE, it must: also set pname:prefersDedicatedAllocation to
     ename:VK_TRUE.
@@ -13577,6 +13588,19 @@ ifdef::VK_EXT_descriptor_heap[]
     to <<limits-imageCaptureReplayOpaqueDataSize,
     pname:imageCaptureReplayOpaqueDataSize>>
 endif::VK_EXT_descriptor_heap[]
+ifdef::VK_ARM_tensor_controls[]
+  * [[VUID-VkTensorCreateInfoARM-pNext-09833]]
+    If a slink:VkTensorRollingBackingCreateInfoARM structure is present in
+    the pname:pNext chain of slink:VkTensorCreateInfoARM, then
+    pname:pDescription->tiling must: be ename:VK_TENSOR_TILING_LINEAR_ARM,
+    ename:VK_TENSOR_TILING_BRICK_16_WIDE_ARM,
+    ename:VK_TENSOR_TILING_BRICK_8_WIDE_ARM, or
+    ename:VK_TENSOR_TILING_BRICK_4_WIDE_ARM
+  * [[VUID-VkTensorCreateInfoARM-pNext-09834]]
+    If a slink:VkTensorRollingBackingCreateInfoARM structure is present in
+    the pname:pNext chain of slink:VkTensorCreateInfoARM, then
+    pname:pDescription->dimensionCount must: be less than or equal to `4`
+endif::VK_ARM_tensor_controls[]
 ****
 
 include::{generated}/validity/structs/VkTensorCreateInfoARM.adoc[]
@@ -13637,6 +13661,97 @@ tensor that will be bound to memory that is either exported or imported.
 
 include::{generated}/validity/structs/VkExternalMemoryTensorCreateInfoARM.adoc[]
 --
+
+ifdef::VK_ARM_tensor_controls[]
+[open,refpage='VkTensorRollingBackingCreateInfoARM',desc='Structure specifying the parameters of a newly created tensor object with rolling backing',type='structs']
+--
+
+To create a tensor for which only a rolling window is backed by memory, add
+a slink:VkTensorRollingBackingCreateInfoARM structure to the pname:pNext
+chain of the slink:VkTensorCreateInfoARM structure.
+
+The slink:VkTensorRollingBackingCreateInfoARM structure is defined as:
+
+include::{generated}/api/structs/VkTensorRollingBackingCreateInfoARM.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:wraps is an array of
+    ename:VK_MAX_TENSOR_CREATE_INFO_ROLLING_BACKING_WRAP_COUNT_ARM 32-bit
+    integers specifying the size of the rolling window for the tensor along
+    each of its dimensions.
+
+.Rolling backing common parameters
+****
+Valid values for some rolling backing creation parameters are calculated
+from others that are a function of tensor creation parameters.
+To improve the readability of Valid Usage rules for
+slink:VkTensorRollingBackingCreateInfoARM, these latter values are defined
+once in this inset.
+
+  * Let [eq]#uint32_t pname:brickOuterSize# define the size of a brick along
+    its outermost dimension.
+  ** If slink:VkTensorDescriptionARM::pname:tiling is
+     ename:VK_TENSOR_TILING_BRICK_16_WIDE_ARM, then
+     [eq]#pname:brickOuterSize = 16#.
+  ** If slink:VkTensorDescriptionARM::pname:tiling is
+     ename:VK_TENSOR_TILING_BRICK_8_WIDE_ARM, then [eq]#pname:brickOuterSize
+     = 8#.
+  ** If slink:VkTensorDescriptionARM::pname:tiling is
+     ename:VK_TENSOR_TILING_BRICK_4_WIDE_ARM, then [eq]#pname:brickOuterSize
+     = 4#.
+  ** Otherwise, [eq]#pname:brickOuterSize = 1#.
+  * Let [eq]#uint32_t pname:elementSize# define the size of individual
+    elements of the tensor.
+****
+
+.Valid Usage
+****
+  * [[VUID-VkTensorRollingBackingCreateInfoARM-wraps-09835]]
+    For each [eq]#i# where [eq]#i <
+    slink:VkTensorDescriptionARM::pname:dimensionCount#,
+    [eq]#pname:wraps[i]# must: be less than or equal to
+    slink:VkTensorDescriptionARM::pname:pDimensions[i]
+  * [[VUID-VkTensorRollingBackingCreateInfoARM-wraps-09836]]
+    For each [eq]#i# where [eq]#i <
+    slink:VkTensorDescriptionARM::pname:dimensionCount#,
+    [eq]#pname:wraps[i]# must: either be equal to
+    slink:VkTensorDescriptionARM::pname:pDimensions[i] or must: be less than
+    [eq]#2^16#
+  * [[VUID-VkTensorRollingBackingCreateInfoARM-wraps-09837]]
+    For each [eq]#i# where [eq]#i <
+    slink:VkTensorDescriptionARM::pname:dimensionCount#, if
+    [eq]#pname:wraps[i]# is not equal to
+    slink:VkTensorDescriptionARM::pname:pDimensions[i] and one element
+    pname:wraps[j] with [eq]#j < i# is not a power of two, then
+    pname:wraps[i] must: be a power of two
+  * [[VUID-VkTensorRollingBackingCreateInfoARM-wraps-09838]]
+    If slink:VkTensorDescriptionARM::pname:dimensionCount is greater than 1,
+    then pname:wraps[pname:dimensionCount - 2] must: be a multiple of
+    pname:brickOuterSize or must: be equal to
+    slink:VkTensorDescriptionARM::pname:pDimensions[pname:dimensionCount -
+    2]
+  * [[VUID-VkTensorRollingBackingCreateInfoARM-wraps-09839]]
+    If pname:brickOuterSize is not equal to 1, then
+    pname:wraps[pname:dimensionCount - 1] must: be a multiple of [eq]#64 /
+    pname:brickOuterSize / pname:elementSize# or be equal to
+    slink:VkTensorDescriptionARM::pname:pDimensions[pname:dimensionCount -
+    1]
+****
+
+include::{generated}/validity/structs/VkTensorRollingBackingCreateInfoARM.adoc[]
+--
+
+[open,refpage='VK_MAX_TENSOR_CREATE_INFO_ROLLING_BACKING_WRAP_COUNT_ARM',desc='Maximum number of tensor rolling backing wraps',type='consts']
+--
+ename:VK_MAX_TENSOR_CREATE_INFO_ROLLING_BACKING_WRAP_COUNT_ARM is the
+maximum number of tensor rolling backing wraps.
+
+include::{generated}/api/enums/VK_MAX_TENSOR_CREATE_INFO_ROLLING_BACKING_WRAP_COUNT_ARM.adoc[]
+--
+
+endif::VK_ARM_tensor_controls[]
 
 [open,refpage='vkDestroyTensorARM',desc='Destroy a tensor object',type='protos']
 --
@@ -13776,6 +13891,20 @@ address(x0,x1,x2,x3) = x0*pStrides[0] + x1*pStrides[1] + x2*pStrides[2] + x3*pSt
     If pname:tiling is ename:VK_TENSOR_TILING_LINEAR_ARM then
     ename:VK_TENSOR_USAGE_IMAGE_ALIASING_BIT_ARM must: not be set in
     pname:usage
+ifdef::VK_ARM_tensor_controls[]
+  * [[VUID-VkTensorDescriptionARM-tiling-09842]]
+    If pname:tiling is ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_ARM or
+    ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_64K_ARM then
+    pname:pDimensions[pname:dimensionCount-1] must: be less than or equal to
+    `4`
+  * [[VUID-VkTensorDescriptionARM-tiling-09843]]
+    If pname:tiling is ename:VK_TENSOR_TILING_BRICK_16_WIDE_ARM,
+    ename:VK_TENSOR_TILING_BRICK_8_WIDE_ARM,
+    ename:VK_TENSOR_TILING_BRICK_4_WIDE_ARM,
+    ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_ARM, or
+    ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_64K_ARM, then pname:pStrides
+    must: be `NULL`
+endif::VK_ARM_tensor_controls[]
 ****
 
 include::{generated}/validity/structs/VkTensorDescriptionARM.adoc[]
@@ -13832,6 +13961,23 @@ include::{generated}/api/enums/VkTensorTilingARM.adoc[]
   * ename:VK_TENSOR_TILING_LINEAR_ARM specifies linear tiling (elements are
     laid out linearly and the offset between each element is determined by
     the <<resources-tensor-description-strides,strides>> of the tensor).
+ifdef::VK_ARM_tensor_controls[]
+  * ename:VK_TENSOR_TILING_BRICK_16_WIDE_ARM specifies that the data is laid
+    out in 64-byte blocks of [eq]#16 x N# elements where [eq]#N# depends on
+    the size of the elements in the tensor.
+  * ename:VK_TENSOR_TILING_BRICK_8_WIDE_ARM specifies that the data is laid
+    out in 64-byte blocks of [eq]#8 x N# elements where [eq]#N# depends on
+    the size of the elements in the tensor.
+  * ename:VK_TENSOR_TILING_BRICK_4_WIDE_ARM specifies that the data is laid
+    out in 64-byte blocks of [eq]#4 x N# elements where [eq]#N# depends on
+    the size of the elements in the tensor.
+  * ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_ARM specifies that the data
+    is laid out using blocks of size [eq]#16 x 16 x C# where [eq]#C# is the
+    size of the tensor along the innermost dimension.
+  * ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_64K_ARM specifies that the
+    data is laid out using 64kiB groups of blocks of size [eq]#16 x 16 x C#,
+    where [eq]#C# is the size of the tensor along the innermost dimension.
+endif::VK_ARM_tensor_controls[]
 --
 
 
@@ -14026,5 +14172,37 @@ Such constraints are documented in the affected valid usage statement.
     slink:VkTensorFormatPropertiesARM::pname:optimalTilingTensorFeatures
     found by calling flink:vkGetPhysicalDeviceFormatProperties2 on the same
     pname:format as slink:VkTensorViewCreateInfoARM::pname:format.
+ifdef::VK_ARM_tensor_controls[]
+  * If the view's tensor was created with
+    ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_ARM, then the tensor view's
+    set of _format features_ is the value of
+    slink:VkTensorExplicitTilingFormatPropertiesARM::pname:blockUTilingTensorFeatures
+    found by calling flink:vkGetPhysicalDeviceFormatProperties2 on the same
+    pname:format as slink:VkTensorViewCreateInfoARM::pname:format.
+  * If the view's tensor was created with
+    ename:VK_TENSOR_TILING_BLOCK_U_INTERLEAVED_64K_ARM, then the tensor
+    view's set of _format features_ is the value of
+    slink:VkTensorExplicitTilingFormatPropertiesARM::pname:blockU64kTilingTensorFeatures
+    found by calling flink:vkGetPhysicalDeviceFormatProperties2 on the same
+    pname:format as slink:VkTensorViewCreateInfoARM::pname:format.
+  * If the view's tensor was created with
+    ename:VK_TENSOR_TILING_BRICK_4_WIDE_ARM, then the tensor view's set of
+    _format features_ is the value of
+    slink:VkTensorExplicitTilingFormatPropertiesARM::pname:brick4TilingTensorFeatures
+    found by calling flink:vkGetPhysicalDeviceFormatProperties2 on the same
+    pname:format as slink:VkTensorViewCreateInfoARM::pname:format.
+  * If the view's tensor was created with
+    ename:VK_TENSOR_TILING_BRICK_8_WIDE_ARM, then the tensor view's set of
+    _format features_ is the value of
+    slink:VkTensorExplicitTilingFormatPropertiesARM::pname:brick8TilingTensorFeatures
+    found by calling flink:vkGetPhysicalDeviceFormatProperties2 on the same
+    pname:format as slink:VkTensorViewCreateInfoARM::pname:format.
+  * If the view's tensor was created with
+    ename:VK_TENSOR_TILING_BRICK_16_WIDE_ARM, then the tensor view's set of
+    _format features_ is the value of
+    slink:VkTensorExplicitTilingFormatPropertiesARM::pname:brick16TilingTensorFeatures
+    found by calling flink:vkGetPhysicalDeviceFormatProperties2 on the same
+    pname:format as slink:VkTensorViewCreateInfoARM::pname:format.
+endif::VK_ARM_tensor_controls[]
 
 endif::VK_ARM_tensors[]

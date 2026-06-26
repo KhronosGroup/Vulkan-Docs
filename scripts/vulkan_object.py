@@ -249,6 +249,12 @@ class Command:
     def __lt__(self, other):
         return self.name < other.name
 
+# After VK_KHR_extended_flags we added the information so code generation knew which
+# member has a potential pNext with extended flag values in it
+@dataclass
+class ExtendedFlag:
+    struct: str # ex) VkImageUsageFlags2CreateInfoKHR
+
 @dataclass
 class Member:
     """<member>"""
@@ -274,6 +280,8 @@ class Member:
     # ex) memoryTypes is ['VK_MAX_MEMORY_TYPES']
     # ex) VkTransformMatrixKHR:matrix is ['3', '4']
     fixedSizeArray: list[str]
+
+    extendedFlag: (ExtendedFlag | None)
 
     optional: bool
     # Note: "optionalPointer" is a misleading name, this should have probably been "optionalPointedValue"

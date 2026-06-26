@@ -10,7 +10,7 @@ import tempfile
 import copy
 from vulkan_object import (VulkanObject,
     Extension, Version, Legacy, Handle, FuncPointerParam, FuncPointer, Param, CommandScope, Command,
-    EnumField, Enum, Flag, Bitmask, ExternSync, Flags, Member, Struct,
+    EnumField, Enum, Flag, Bitmask, ExternSync, Flags, ExtendedFlag, Member, Struct,
     Constant, FormatComponent, FormatPlane, Format, FeatureRequirement,
     SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
     SpirvEnables, Spirv,
@@ -1077,6 +1077,10 @@ class BaseGenerator(OutputGenerator):
                 if fixedSizeArray and not length:
                     length = ','.join(fixedSizeArray)
 
+                extendedFlag = None
+                if member.get('flagsextend') is not None:
+                    extendedFlag = ExtendedFlag(member.get('flagsextend'))
+
                 # Handle C bit field members
                 bitFieldWidth = int(cdecl.split(':')[1]) if ':' in cdecl else None
 
@@ -1097,7 +1101,7 @@ class BaseGenerator(OutputGenerator):
 
                 members.append(Member(name, type, fullType, noautovalidity, limittype,
                                       const, length, nullTerminated, pointer, fixedSizeArray,
-                                      optional, optionalPointer,
+                                      extendedFlag, optional, optionalPointer,
                                       externSync, cdecl, bitFieldWidth, selector, selections))
 
             self.vk.structs[typeName] = Struct(typeName, [], extension, self.currentVersion, protect, members,
