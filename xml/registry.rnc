@@ -134,7 +134,8 @@ Types = element types { CommentAttr?, (Type | CommentElt)* }
 #           elements in the array. The array is assumed to be tightly packed
 #           if omitted.
 #       deprecated - denotes that this member is marked as legacy, and why.
-#           Valid values: 'ignored', 'true'.
+#           Valid values: 'unused', 'true'.
+#           If the value is 'unused', the member must always be set to 0.
 #       externsync - denotes that the member should be externally synchronized
 #           when accessed by Vulkan
 #       optional - whether this value can be omitted by providing NULL (for
@@ -166,7 +167,7 @@ CommonTypeAttributes =
     ApiAttr?,
     CommentAttr?,
     attribute requires { text }?,
-    attribute deprecated { "ignored" | "true" }?
+    attribute deprecated { "unused" | "true" }?
 
 # Type declarations with some minimal structure - a single <name> tag
 # preceded and followed by any amount of text mixed with <type> tags.
@@ -294,7 +295,7 @@ TypeInclude =
 TypeRequires =
     ApiAttr?,
     CommentAttr?,
-    attribute deprecated { "ignored" | "true" }?,
+    attribute deprecated { "unused" | "true" }?,
     attribute name { TypeName_t },
     attribute requires { text }
 
@@ -327,6 +328,8 @@ TypeStruct =
                attribute objecttype { text }?,
                attribute deprecated { text }?,
                attribute featurelink { text }?,
+               attribute flagsextend { VkTypeNameRef_t }?,
+               attribute flagsextendmember { TypeName_t }?,
                TypeBodyWithEnum
            }
            | CommentElt
@@ -380,7 +383,7 @@ Enums =
 #   protect - additional #ifdef symbol to place around the enum
 #   comment - descriptive text with no semantic meaning
 #   deprecated - denotes that this enum is marked as legacy, and why.
-#       Valid values: 'aliased', 'ignored', 'true'.
+#       Valid values: 'aliased', 'unused', 'true'.
 Enum =
     element enum {
         ((attribute value { text }
@@ -395,12 +398,22 @@ Enum =
          | (attribute extends { VkTypeNameRef_t }?
             & attribute alias {
                   VkTypeNameRef_t | VkDefineOrEnumName_t
+              })
+         | (attribute value { text }
+            & attribute extends { VkTypeNameRef_t }?
+            & attribute alias {
+                  VkTypeNameRef_t | VkDefineOrEnumName_t
+              })
+         | (attribute bitpos { xsd:long }
+            & attribute extends { VkTypeNameRef_t }?
+            & attribute alias {
+                  VkTypeNameRef_t | VkDefineOrEnumName_t
               }))?
         & ProtectAttr?
         & ApiAttr?
         & attribute type { "uint8_t" | "uint32_t" | "uint64_t" | "float" }?
         & attribute name { VkDefineOrEnumName_t }
-        & attribute deprecated { "aliased" | "ignored" | "true" }?
+        & attribute deprecated { "aliased" | "unused" | "true" }?
         & CommentAttr?
     }
 
@@ -573,7 +586,7 @@ Feature =
                ProfileNameAttr?,
                CommentAttr?,
                attribute explanationlink { text } ,
-               (InterfaceElement | CommentElt)*
+               (DeprecateElement | CommentElt)*
          }
          | element remove {
                ProfileNameAttr?,
@@ -657,7 +670,7 @@ Extension =
             attribute explanationlink { text } ,
                ProfileNameAttr?,
                CommentAttr?,
-               (InterfaceElement | CommentElt)*
+               (DeprecateElement | CommentElt)*
          }
          | element remove {
                ApiAttr?,
@@ -967,6 +980,30 @@ InterfaceElement =
           CommentAttr?
       }
 
+# Contents of a <deprecate> tag, defining a group of features to deprecate.
+#   <type> / <enum> / <command> all have attributes
+#     name - feature name which must match
+# The NameAttr of a feature element may be a comma-separated list to indicate
+# that any one of the named features must be supported
+DeprecateElement =
+    element type {
+# The 'name' can be an arbitrary string, such as a C #include path, in which case this fails
+#        attribute name { xsd:NCName },
+        attribute name { text },
+        attribute supersededby { text }?,
+        CommentAttr?
+    }
+    | element enum {
+        attribute name { VkDefineOrEnumName_t },
+        attribute supersededby { VkDefineOrEnumName_t }?,
+        CommentAttr?
+    }
+    | element command {
+          attribute name { VkFuncName_t },
+          attribute supersededby { VkFuncName_t }?,
+          CommentAttr?
+      }
+
 # Data types - all end in _t
 MemberOrParamName_t =
     xsd:NCName { pattern = "[a-z]([a-z0-9]*)([A-Z][a-z0-9]*)*" }
@@ -1042,7 +1079,11 @@ ExtensionNameAttr = attribute extension { VkExtName_t }
 VendorAttr = attribute vendor { VendorIdRef_t }
 CommentAttr = attribute comment { text }
 NameAttr = attribute name { xsd:NCName }
-ProtectAttr = attribute protect { VkUpperSnakeCase_t }
+# ProtectAttr supports boolean expressions like depends (using +, operators and parentheses)
+ProtectAttr =
+    attribute protect {
+        xsd:token { pattern = "[!(),+_A-Z0-9]+" }
+    }
 
 # Optional attributes that must be true if present.
 NoAutoValidityAttr = attribute noautovalidity { "true" }

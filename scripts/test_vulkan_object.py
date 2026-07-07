@@ -34,6 +34,7 @@ class MyGenerator(BaseGenerator):
         # isinstance() will make sure we are reporting valid types exposed in the
         # VulkanObject interface for each .
         # Note - it will not recursively inspect each member class
+        assert isinstance(self.vk.headerVersion, str)
         for handle in self.vk.handles.values():
             assert isinstance(handle, Handle)
         for command in self.vk.commands.values():
@@ -118,9 +119,8 @@ class MyGenerator(BaseGenerator):
                 assert isinstance(enum, Enum)
             for bitmask in extension.bitmasks:
                 assert isinstance(bitmask, Bitmask)
-            for flags in extension.flags.values():
-                for flag in flags:
-                    assert isinstance(flag, Flags)
+            for flag in extension.flags:
+                assert isinstance(flag, Flags)
             for enumFields in extension.enumFields.values():
                 for enum in enumFields:
                     assert isinstance(enum, EnumField)

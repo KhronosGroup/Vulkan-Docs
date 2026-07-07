@@ -90,7 +90,8 @@ class SyncOutputGenerator(OutputGenerator):
     def genSyncAccess(self, accessinfo):
         OutputGenerator.genSyncStage(self, accessinfo)
         name = accessinfo.elem.get('name')
-        self.access_flags.append(name)
+        alias = accessinfo.elem.get('alias')
+        self.access_flags.append([name, alias])
 
         if accessinfo.condition is not None:
             self.access_flag_condition[name] = accessinfo.condition
@@ -198,10 +199,13 @@ class SyncOutputGenerator(OutputGenerator):
 
     def supportedAccessTypes(self):
         output = []
-        for flag in self.access_flags:
+        for (flag, alias) in self.access_flags:
             (condition, result) = self.evaluateAccessIfdef(flag)
             if result:
-                output.append(f'|ename:{flag} |')
+                if alias is None:
+                    output.append(f'|ename:{flag} |')
+                else:
+                    output.append(f'|ename:{flag}, +\n ename:{alias} |')
 
                 if flag not in self.access_flag_stage_support:
                     output.append('\tAny')

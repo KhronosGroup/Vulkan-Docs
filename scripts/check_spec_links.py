@@ -73,8 +73,12 @@ SYSTEM_TYPES = set(('void', 'char', 'float', 'size_t', 'uintptr_t',
 
 # Exceptions to:
 # error: Definition of link target {} with macro etext (used for category enums) does not exist. (-Wwrong_macro)
-# typically caused by using Vulkan-only enums in Vulkan SC blocks with "etext", or because they
-# are suffixed differently.
+# These are typically caused by using Vulkan-only enums in Vulkan SC blocks
+# with etext: instead of ename: / elink:, or because they are suffixed
+# differently, or because there was a conscious choice to use etext: even
+# though the API is actually in the build, to avoid build-time warnings when
+# building subsets of the full specification, as sometimes happens in NOTEs
+# and extension appendices that are non-normative.
 CHECK_UNRECOGNIZED_ETEXT_EXCEPTIONS = (
     "VK_COLORSPACE_SRGB_NONLINEAR_KHR",
     "VK_COLOR_SPACE_DCI_P3_LINEAR_EXT",
@@ -83,6 +87,9 @@ CHECK_UNRECOGNIZED_ETEXT_EXCEPTIONS = (
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETER_FEATURES",
     "VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTER_FEATURES",
     "VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES2_EXT",
+    "VK_COLOR_SPACE_SRGB_NONLINEAR_KHR",
+    "VkDebugReportObjectTypeEXT",
+    "VkAccelerationStructureMemoryRequirementsTypeNV",
 )
 
 # Exceptions to:

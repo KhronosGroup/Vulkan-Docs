@@ -1,0 +1,582 @@
+// Copyright 2021-2026 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_AMD_gpa_interface
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:sectnums:
+// Required so images render in github
+ifndef::images[:images: ../images]
+
+This document describes a GPU Performance API (GPA) interface extension to provide access to GPU global performance counters, streaming performance monitors (SPM), and thread traces (SQTT) on AMD Radeon™ GPUs.
+
+== Problem Statement
+
+Several third-party tools, including RenderDoc (https://renderdoc.org/), make use of the AMD GPU Performance API library (https://gpuopen.com/gpuperfapi/) to gain access to GPU performance counters which help analyze the performance and execution characteristics of applications using an AMD Radeon™ GPU.  A Vulkan extension is required to enable the library, or any application, to interact with the underlying AMD Vulkan driver to control counter sampling and set clocks.
+
+== Solution Space
+
+This extension was released in drivers before this proposal document and spec existed - the specification must match existing implementation behavior.
+
+== Proposal
+
+=== Session handle
+
+A new handle is added to identify a GPA session:
+
+[source,c]
+----
+VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkGpaSessionAMD)
+----
+
+A session is a unique handle that holds the results of sampled counters, and has a status to show when results are ready.
+
+=== Session creation/destruction
+
+Two functions are added to create and destroy a GPA session:
+
+[source,c]
+----
+VkResult vkCreateGpaSessionAMD(
+    VkDevice                                    device,
+    const VkGpaSessionCreateInfoAMD*            pCreateInfo,
+    const VkAllocationCallbacks*                pAllocator,
+    VkGpaSessionAMD*                            pGpaSession);
+
+void vkDestroyGpaSessionAMD(
+    VkDevice                                    device,
+    VkGpaSessionAMD                             gpaSession,
+    const VkAllocationCallbacks*                pAllocator);
+----
+
+[source,c]
+----
+typedef struct VkGpaSessionCreateInfoAMD {
+    VkStructureType    sType;
+    const void*        pNext;
+
+    VkGpaSessionAMD    secondaryCopySource;
+} VkGpaSessionCreateInfoAMD;
+----
+
+- `secondaryCopySource` allows for cloning a session's internal memory layout for use when a secondary command buffer is executed.  This is required to prevent multiple invocations of the same secondary command buffer overwriting each other's results.
+
+=== Setting and getting clock information
+
+For performance counters and thread tracing to produce meaningful results, clock control and querying is available.
+
+==== Setting the clock mode
+
+A function is added to set the clock mode:
+
+[source,c]
+----
+VkResult vkSetGpaDeviceClockModeAMD(
+    VkDevice                                    device,
+    VkGpaDeviceClockModeInfoAMD*                pInfo);
+----
+[source,c]
+----
+typedef enum VkGpaDeviceClockModeAMD {
+    VK_GPA_DEVICE_CLOCK_MODE_DEFAULT_AMD = 0,
+    VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD = 1,
+    VK_GPA_DEVICE_CLOCK_MODE_PROFILING_AMD = 2,
+    VK_GPA_DEVICE_CLOCK_MODE_MIN_MEMORY_AMD = 3,
+    VK_GPA_DEVICE_CLOCK_MODE_MIN_ENGINE_AMD = 4,
+    VK_GPA_DEVICE_CLOCK_MODE_PEAK_AMD = 5,
+    VK_GPA_DEVICE_CLOCK_MODE_MAX_ENUM_AMD = 0x7FFFFFFF
+} VkGpaDeviceClockModeAMD;
+----
+
+ - `VK_GPA_DEVICE_CLOCK_MODE_DEFAULT_AMD` - Device clocks and other power settings are restored to default.
+ - `VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD` - Queries the current clock values only.
+ - `VK_GPA_DEVICE_CLOCK_MODE_PROFILING_AMD` - Scale down from peak ratio. Clocks are set to a constant amount which is known to be power and thermal sustainable. The engine/memory clock ratio will be kept the same as much as possible.
+ - `VK_GPA_DEVICE_CLOCK_MODE_MIN_MEMORY_AMD` - Memory clock is set to the lowest available level. Engine clock is set to thermal and power sustainable level.
+ - `VK_GPA_DEVICE_CLOCK_MODE_MIN_ENGINE_AMD` - Engine clock is set to the lowest available level. Memory clock is set to thermal and power sustainable level.
+ - `VK_GPA_DEVICE_CLOCK_MODE_PEAK_AMD` - Clocks set to maximum when possible. Fans set to maximum. Note: Under power and thermal constraints device will clock down.
+
+[source,c]
+----
+typedef struct VkGpaDeviceClockModeInfoAMD {
+    VkStructureType            sType;
+    const void*                pNext;
+
+    VkGpaDeviceClockModeAMD    clockMode;
+    float                      memoryClockRatioToPeak;
+    float                      engineClockRatioToPeak;
+} VkGpaDeviceClockModeInfoAMD;
+----
+
+ - `clockMode` - Which clock mode to set, or `VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD` to return `memoryClockRatioToPeak` and `engineClockRatioToPeak`.
+ - `memoryClockRatioToPeak` - if `clockMode` is `VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD`, returns the ratio of current memory clock to maximum memory clock.
+ - `engineClockRatioToPeak` - if `clockMode` is `VK_GPA_DEVICE_CLOCK_MODE_QUERY_AMD`, returns the ratio of current engine clock to maximum engine clock.
+
+==== Querying clock info
+
+A function is added to query the current clock frequencies and their ratios to their maximum values:
+
+[source,c]
+----
+VkResult vkGetGpaDeviceClockInfoAMD(
+    VkDevice                                    device,
+    VkGpaDeviceGetClockInfoAMD*                 pInfo);
+----
+
+[source,c]
+----
+typedef struct VkGpaDeviceGetClockInfoAMD {
+    VkStructureType    sType;
+    void*              pNext;
+
+    float              memoryClockRatioToPeak;
+    float              engineClockRatioToPeak;
+    uint32_t           memoryClockFrequency;
+    uint32_t           engineClockFrequency;
+} VkGpaDeviceGetClockInfoAMD;
+----
+
+ - `memoryClockRatioToPeak` - Ratio of current memory clock to maximum memory clock.
+ - `engineClockRatioToPeak` - Ratio of current engine clock to maximum engine clock.
+ - `memoryClockFrequency` - Current memory clock (absolute) value in MHz.
+ - `engineClockFrequency` - Current GPU core clock (absolute) value in MHz.
+
+
+=== Beginning and ending a GPA session
+
+Two functions are added to begin and end a GPA session:
+
+[source,c]
+----
+VkResult vkCmdBeginGpaSessionAMD(
+    VkCommandBuffer                             commandBuffer,
+    VkGpaSessionAMD                             gpaSession);
+
+VkResult vkCmdEndGpaSessionAMD(
+    VkCommandBuffer                             commandBuffer,
+    VkGpaSessionAMD                             gpaSession);
+----
+
+`vkCmdBeginGpaSessionAMD` begins a new or previously reset GPA session, and must be called before any sampling occurs.
+`vkCmdEndGpaSessionAMD` ends a GPA session, and must be called after all performance measurements.  Begin/End can span multiple command buffers on the same queue, as long as they are executed in order.
+
+=== Beginning and ending sampling
+
+Once a session has begun, samples can then be captured during the command buffer execution.
+
+Two functions are added to begin and end sampling:
+
+[source,c]
+----
+VkResult vkCmdBeginGpaSampleAMD(
+    VkCommandBuffer                             commandBuffer,
+    VkGpaSessionAMD                             gpaSession,
+    const VkGpaSampleBeginInfoAMD*              pGpaSampleBeginInfo,
+    uint32_t*                                   pSampleID);
+
+void vkCmdEndGpaSampleAMD(
+    VkCommandBuffer                             commandBuffer,
+    VkGpaSessionAMD                             gpaSession,
+    uint32_t                                    sampleID);
+----
+
+Each measurement is represented by a unique sample ID returned by `vkCmdBeginGpaSampleAMD`. The sample ID should be stored by the client to pass into `vkCmdEndGpaSampleAMD` when the command buffer range for that sample is complete, and also into `vkGetGpaSessionResultsAMD` to get the results for that sample.
+
+`vkCmdBeginGpaSampleAMD` and `vkCmdEndGpaSampleAMD` must be within the same command buffer if `pGpaSampleBeginInfo->sampleType` is `VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD`.
+
+[source,c]
+----
+
+typedef enum VkGpaPerfBlockAMD {
+    VK_GPA_PERF_BLOCK_CPF_AMD = 0,
+    VK_GPA_PERF_BLOCK_IA_AMD = 1,
+    VK_GPA_PERF_BLOCK_VGT_AMD = 2,
+    VK_GPA_PERF_BLOCK_PA_AMD = 3,
+    VK_GPA_PERF_BLOCK_SC_AMD = 4,
+    VK_GPA_PERF_BLOCK_SPI_AMD = 5,
+    VK_GPA_PERF_BLOCK_SQ_AMD = 6,
+    VK_GPA_PERF_BLOCK_SX_AMD = 7,
+    VK_GPA_PERF_BLOCK_TA_AMD = 8,
+    VK_GPA_PERF_BLOCK_TD_AMD = 9,
+    VK_GPA_PERF_BLOCK_TCP_AMD = 10,
+    VK_GPA_PERF_BLOCK_TCC_AMD = 11,
+    VK_GPA_PERF_BLOCK_TCA_AMD = 12,
+    VK_GPA_PERF_BLOCK_DB_AMD = 13,
+    VK_GPA_PERF_BLOCK_CB_AMD = 14,
+    VK_GPA_PERF_BLOCK_GDS_AMD = 15,
+    VK_GPA_PERF_BLOCK_SRBM_AMD = 16,
+    VK_GPA_PERF_BLOCK_GRBM_AMD = 17,
+    VK_GPA_PERF_BLOCK_GRBM_SE_AMD = 18,
+    VK_GPA_PERF_BLOCK_RLC_AMD = 19,
+    VK_GPA_PERF_BLOCK_DMA_AMD = 20,
+    VK_GPA_PERF_BLOCK_MC_AMD = 21,
+    VK_GPA_PERF_BLOCK_CPG_AMD = 22,
+    VK_GPA_PERF_BLOCK_CPC_AMD = 23,
+    VK_GPA_PERF_BLOCK_WD_AMD = 24,
+    VK_GPA_PERF_BLOCK_TCS_AMD = 25,
+    VK_GPA_PERF_BLOCK_ATC_AMD = 26,
+    VK_GPA_PERF_BLOCK_ATC_L2_AMD = 27,
+    VK_GPA_PERF_BLOCK_MC_VM_L2_AMD = 28,
+    VK_GPA_PERF_BLOCK_EA_AMD = 29,
+    VK_GPA_PERF_BLOCK_RPB_AMD = 30,
+    VK_GPA_PERF_BLOCK_RMI_AMD = 31,
+    VK_GPA_PERF_BLOCK_UMCCH_AMD = 32,
+    VK_GPA_PERF_BLOCK_GE_AMD = 33,
+    VK_GPA_PERF_BLOCK_GL1A_AMD = 34,
+    VK_GPA_PERF_BLOCK_GL1C_AMD = 35,
+    VK_GPA_PERF_BLOCK_GL1CG_AMD = 36,
+    VK_GPA_PERF_BLOCK_GL2A_AMD = 37,
+    VK_GPA_PERF_BLOCK_GL2C_AMD = 38,
+    VK_GPA_PERF_BLOCK_CHA_AMD = 39,
+    VK_GPA_PERF_BLOCK_CHC_AMD = 40,
+    VK_GPA_PERF_BLOCK_CHCG_AMD = 41,
+    VK_GPA_PERF_BLOCK_GUS_AMD = 42,
+    VK_GPA_PERF_BLOCK_GCR_AMD = 43,
+    VK_GPA_PERF_BLOCK_PH_AMD = 44,
+    VK_GPA_PERF_BLOCK_UTCL1_AMD = 45,
+    VK_GPA_PERF_BLOCK_GE_DIST_AMD = 46,
+    VK_GPA_PERF_BLOCK_GE_SE_AMD = 47,
+    VK_GPA_PERF_BLOCK_DF_MALL_AMD = 48,
+    VK_GPA_PERF_BLOCK_SQ_WGP_AMD = 49,
+    VK_GPA_PERF_BLOCK_PC_AMD = 50,
+    VK_GPA_PERF_BLOCK_GL1XA_AMD = 51,
+    VK_GPA_PERF_BLOCK_GL1XC_AMD = 52,
+    VK_GPA_PERF_BLOCK_WGS_AMD = 53,
+    VK_GPA_PERF_BLOCK_EACPWD_AMD = 54,
+    VK_GPA_PERF_BLOCK_EASE_AMD = 55,
+    VK_GPA_PERF_BLOCK_RLCUSER_AMD = 56,
+    VK_GPA_PERF_BLOCK_GE1_AMD = VK_GPA_PERF_BLOCK_GE_AMD,
+    VK_GPA_PERF_BLOCK_RLCLOCAL_AMD = VK_GPA_PERF_BLOCK_RLCUSER_AMD,
+    VK_GPA_PERF_BLOCK_MAX_ENUM_AMD = 0x7FFFFFFF
+} VkGpaPerfBlockAMD;
+----
+
+[source,c]
+----
+typedef enum VkGpaSampleTypeAMD {
+    VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD = 0,
+    VK_GPA_SAMPLE_TYPE_TRACE_AMD = 1,
+    VK_GPA_SAMPLE_TYPE_TIMING_AMD = 2,
+    VK_GPA_SAMPLE_TYPE_MAX_ENUM_AMD = 0x7FFFFFFF
+} VkGpaSampleTypeAMD;
+----
+
+ - `VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD` - One 64-bit result will be returned per global performance counter representing the cumulative delta for that counter over the sample period.  Cumulative samples must begin and end in the same command buffer.
+ - `VK_GPA_SAMPLE_TYPE_TRACE_AMD` - A GPU memory buffer will be filled with SQTT and/or SPM results data in an IHV-specific format ("RGP file format" on AMD Radeon hardware). Trace samples may span multiple command buffers.
+ - `VK_GPA_SAMPLE_TYPE_TIMING_AMD` - Two 64-bit results will be recorded to gather timestamp data.
+
+[source,c]
+----
+typedef enum VkGpaSqShaderStageFlagBitsAMD {
+    VK_GPA_SQ_SHADER_STAGE_PS_BIT_AMD = 0x00000001,
+    VK_GPA_SQ_SHADER_STAGE_VS_BIT_AMD = 0x00000002,
+    VK_GPA_SQ_SHADER_STAGE_GS_BIT_AMD = 0x00000004,
+    VK_GPA_SQ_SHADER_STAGE_ES_BIT_AMD = 0x00000008,
+    VK_GPA_SQ_SHADER_STAGE_HS_BIT_AMD = 0x00000010,
+    VK_GPA_SQ_SHADER_STAGE_LS_BIT_AMD = 0x00000020,
+    VK_GPA_SQ_SHADER_STAGE_CS_BIT_AMD = 0x00000040,
+    VK_GPA_SQ_SHADER_STAGE_FLAG_BITS_MAX_ENUM_AMD = 0x7FFFFFFF
+} VkGpaSqShaderStageFlagBitsAMD;
+typedef VkFlags VkGpaSqShaderStageFlagsAMD;
+----
+
+ - `VK_GPA_SQ_SHADER_STAGE_PS_BIT_AMD` - Pixel shader.
+ - `VK_GPA_SQ_SHADER_STAGE_VS_BIT_AMD` - Vertex shader.
+ - `VK_GPA_SQ_SHADER_STAGE_GS_BIT_AMD` - Geometry shader.
+ - `VK_GPA_SQ_SHADER_STAGE_ES_BIT_AMD` - Export shader.
+ - `VK_GPA_SQ_SHADER_STAGE_HS_BIT_AMD` - Hull shader.
+ - `VK_GPA_SQ_SHADER_STAGE_LS_BIT_AMD` - Local shader.
+ - `VK_GPA_SQ_SHADER_STAGE_CS_BIT_AMD` - Compute shader.
+
+[source,c]
+----
+typedef struct VkGpaPerfCounterAMD {
+    VkGpaPerfBlockAMD    blockType;
+    uint32_t             blockInstance;
+    uint32_t             eventID;
+} VkGpaPerfCounterAMD;
+----
+
+ - `blockType` - Which GPU block to reference.
+ - `blockInstance` - Which instance of the specified GPU block to sample.
+ - `eventID` - Performance counter identifier to sample. Event IDs are hardware-defined, and a specific value may change meaning across different hardware.
+
+[source,c]
+----
+typedef struct VkGpaSampleBeginInfoAMD {
+    VkStructureType               sType;
+    const void*                   pNext;
+
+    VkGpaSampleTypeAMD            sampleType;
+
+    VkBool32                      sampleInternalOperations;
+    VkBool32                      cacheFlushOnCounterCollection;
+
+    VkBool32                      sqShaderMaskEnable;
+    VkGpaSqShaderStageFlagsAMD    sqShaderMask;
+
+    uint32_t                      perfCounterCount;
+    const VkGpaPerfCounterAMD*    pPerfCounters;
+    uint32_t                      streamingPerfTraceSampleInterval;
+    VkDeviceSize                  perfCounterDeviceMemoryLimit;
+
+    VkBool32                      sqThreadTraceEnable;
+    VkBool32                      sqThreadTraceSuppressInstructionTokens;
+    VkDeviceSize                  sqThreadTraceDeviceMemoryLimit;
+
+    VkPipelineStageFlags          timingPreSample;
+    VkPipelineStageFlags          timingPostSample;
+} VkGpaSampleBeginInfoAMD;
+----
+
+ - `sampleType` -  Sample type
+
+ - `sampleInternalOperations` - Include internal driver operations in the results.
+ - `cacheFlushOnCounterCollection` - Insert cache flush and invalidate events before and after every sample.
+
+ - `sqShaderMaskEnable` - Sample a specified selection of stages instead of all stages.
+ - `sqShaderMask` - Which shader stages to sample if `sqShaderMaskEnable` is `VK_TRUE`. Stages are hardware-specific, and those that are invalid for the current device are ignored. For example, `VK_GPA_SQ_SHADER_STAGE_VS_BIT_AMD`, `VK_GPA_SQ_SHADER_STAGE_ES_BIT_AMD`, and `VK_GPA_SQ_SHADER_STAGE_LS_BIT_AMD` are only meaningful on pre-RDNA AMD Radeon™ GPUs.
+
+ - `perfCounterCount` - The number of performance counters to sample.
+ - `pPerfCounters` - The list of performance counters to sample.
+ - `streamingPerfTraceSampleInterval` - Requested period for SPM sample collection in cycles.  Under constrained situations, the hardware may skip a sample.  Only relevant for `VK_GPA_SAMPLE_TYPE_TRACE_AMD` sample types.
+ - `perfCounterDeviceMemoryLimit` - Maximum amount of GPU memory in bytes this sample can allocate for SPM data.  Only relevant for `VK_GPA_SAMPLE_TYPE_TRACE_AMD` sample types.
+
+ - `sqThreadTraceEnable` - Include SQTT data in the trace.
+ - `sqThreadTraceSuppressInstructionTokens` - Prevents capturing instruction-level SQTT tokens, significantly reducing the amount of sample data.
+ - `sqThreadTraceDeviceMemoryLimit` - Maximum amount of GPU memory in bytes this sample can allocate for the SQTT buffer.  If 0, allocate maximum size to prevent dropping tokens towards the end of the sample.
+
+ - `timingPreSample` - The pipeline stage where the begin timestamp should take place. For `VK_GPA_SAMPLE_TYPE_TIMING_AMD` timestamps only.
+ - `timingPostSample` - The pipeline stage where the end timestamp should take place. For `VK_GPA_SAMPLE_TYPE_TIMING_AMD` timestamps only.
+
+=== Session status and results querying
+
+==== Session status query
+
+A new function `vkGetGpaSessionStatusAMD` returns `VK_SUCCESS` if the GPA session results are available to be read by `vkGetGpaSessionResultsAMD`, or `VK_NOT_READY` otherwise:
+
+[source,c]
+----
+VkResult vkGetGpaSessionStatusAMD(
+    VkDevice                                    device,
+    VkGpaSessionAMD                             gpaSession);
+----
+
+==== Sample results query
+
+A new function gets the GPA session results for a sample ID:
+
+[source,c]
+----
+VkResult vkGetGpaSessionResultsAMD(
+    VkDevice                                    device,
+    VkGpaSessionAMD                             gpaSession,
+    uint32_t                                    sampleID,
+    size_t*                                     pSizeInBytes,
+    void*                                       pData);
+----
+
+`vkGetGpaSessionStatusAMD` must have returned `VK_SUCCESS` before `vkGetGpaSessionResultsAMD` can be called for that GPA session.
+
+Calling `vkGetGpaSessionResultsAMD` with `pData` set to `NULL` will return the size of the results data in `pSizeInBytes`.
+
+=== Resetting and copying session results
+
+==== Resetting a session
+
+Before reuse, a GPA session must be reset using the following command:
+
+[source,c]
+----
+VkResult vkResetGpaSessionAMD(
+    VkDevice                                    device,
+    VkGpaSessionAMD                             gpaSession);
+----
+
+Resetting a session and then reusing it is strongly recommended due to the overhead of destroying the session and then creating a new one.
+
+==== Copying results from secondary command buffers
+
+When executing a secondary command buffer multiple times the following command can be used between executions to preserve the results by copying them from the GPA session used in the secondary command buffer to another GPA session:
+
+[source,c]
+----
+void vkCmdCopyGpaSessionResultsAMD(
+    VkCommandBuffer                             commandBuffer,
+    VkGpaSessionAMD                             gpaSession);
+----
+
+=== Properties
+
+Two new structures, `VkPhysicalDeviceGpaPropertiesAMD` and `VkPhysicalDeviceGpaProperties2AMD`, can be queried to get performance counter block information and an identifying GPU revision ID:
+
+[source,c]
+----
+typedef struct VkGpaPerfBlockPropertiesAMD {
+    VkGpaPerfBlockAMD                   blockType;
+    VkGpaPerfBlockPropertiesFlagsAMD    flags;
+    uint32_t                            instanceCount;
+    uint32_t                            maxEventID;
+    uint32_t                            maxGlobalOnlyCounters;
+    uint32_t                            maxGlobalSharedCounters;
+    uint32_t                            maxStreamingCounters;
+} VkGpaPerfBlockPropertiesAMD;
+
+typedef VkFlags VkGpaPerfBlockPropertiesFlagsAMD;
+----
+
+ - `blockType` - Which GPU block this refers to.
+ - `flags` - Reserved for future use.
+ - `instanceCount` - The number of instances of this block on the device.
+ - `maxEventID` - Maximum event ID for this block.
+ - `maxGlobalOnlyCounters` - Number of counters available only for global counts.
+ - `maxGlobalSharedCounters` - Total counters available including state shared between global and streaming performance monitor counters.  This represents the maximum number of cumulative counters that can be collected simultaneously on each block instance for `VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD` sample types.
+ - `maxStreamingCounters` - The maximum number of streaming counters that can be collected simultaneously on each block instance for `VK_GPA_SAMPLE_TYPE_TRACE_AMD` sample types.
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceGpaPropertiesAMD {
+    VkStructureType                         sType;
+    void*                                   pNext;
+
+    VkPhysicalDeviceGpaPropertiesFlagsAMD   flags;
+
+    VkDeviceSize                            maxSqttSeBufferSize;
+
+    uint32_t                                shaderEngineCount;
+
+    uint32_t                                perfBlockCount;
+    VkGpaPerfBlockPropertiesAMD*            pPerfBlocks;
+} VkPhysicalDeviceGpaPropertiesAMD;
+
+typedef VkFlags VkPhysicalDeviceGpaPropertiesFlagsAMD;
+----
+
+ - `flags` - Reserved for future use.
+ - `maxSqttSeBufferSize` - Maximum SQTT buffer size per shader engine.
+ - `shaderEngineCount` - Number of shader engines.
+ - `perfBlockCount` - The size of the pPerfBlocks array, or if pPerfBlocks is NULL the number of available device blocks.
+ - `pPerfBlocks` - Array containing available device blocks, or NULL to return the number available in perfBlockCount.
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceGpaProperties2AMD {
+    VkStructureType    sType;
+    void*              pNext;
+
+    uint32_t           revisionId;
+} VkPhysicalDeviceGpaProperties2AMD;
+----
+
+ - `revisionId` - GPU revision ID
+
+=== Features
+
+A new feature structure is added:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceGpaFeaturesAMD {
+    VkStructureType    sType;
+    void*              pNext;
+
+    VkBool32           perfCounters;
+    VkBool32           streamingPerfCounters;
+    VkBool32           sqThreadTracing;
+    VkBool32           clockModes;
+} VkPhysicalDeviceGpaFeaturesAMD;
+----
+
+ - `perfCounters` - Device supports performance counters.
+ - `streamingPerfCounters` - Device supports streaming performance monitor traces.
+ - `sqThreadTracing` - Device supports thread traces.
+ - `clockModes` - Device supports setting clock modes.
+
+== Examples
+
+=== Sample setup
+
+[source,c]
+----
+VkGpaSampleBeginInfoAMD sampleInfo = { VK_STRUCTURE_TYPE_GPA_SAMPLE_BEGIN_INFO_AMD, 0 };
+
+sampleInfo.sampleType                    = VK_GPA_SAMPLE_TYPE_CUMULATIVE_AMD;
+sampleInfo.cacheFlushOnCounterCollection = VK_TRUE;
+
+// Enable CPG block counter that always counters upwards
+{
+    VkGpaPerfCounterAMD perfCounter = {};
+
+    perfCounter.blockType = VK_GPA_PERF_BLOCK_CPG_AMD;
+    perfCounter.blockInstance = 0;
+    perfCounter.eventID = 0;
+
+    counters.push_back(perfCounter);
+}
+
+// Enable every SPI counter that counts the number of gfx CS waves initialized (applicable to Gfx11 and Gfx12 hardware for graphics applications)
+for (uint32_t i = 0; i < spiBlock.instanceCount; ++i)
+{
+    VkGpaPerfCounterAMD perfCounter = {};
+
+    perfCounter.blockType = VK_GPA_PERF_BLOCK_SPI_AMD;
+    perfCounter.blockInstance = i;
+    perfCounter.eventID = 42;
+
+    counters.push_back(perfCounter);
+}
+
+sampleInfo.perfCounterCount = counters.size();
+sampleInfo.pPerfCounters = &counters[0];
+
+uint32_t sampleID = 0;
+
+vkCmdBeginGpaSampleAMD(cmdbuf->handle, primarySession, &sampleInfo, &sampleID);
+
+//
+// write commands for workload into cmdbuf
+//
+
+vkCmdEndGpaSampleAMD(cmdbuf->handle, primarySession, sampleID);
+----
+
+=== Using secondary command buffers that are executed multiple times
+
+[source,c]
+----
+VkGpaSessionCreateInfoAMD copyInfo = { VK_STRUCTURE_TYPE_GPA_SESSION_CREATE_INFO_AMD, nullptr };
+
+// secondarySession has e.g. been used to write measurements in some secondary command buffer
+copyInfo.secondaryCopySource = secondarySession;
+
+// create two more session objects that can be copied to from secondarySession
+VkGpaSessionAMD secondaryCopy1 = VK_NULL_HANDLE;
+VkGpaSessionAMD secondaryCopy2 = VK_NULL_HANDLE;
+
+vkCreateGpaSessionAMD(device->handle, &copyInfo, nullptr, &secondaryCopy1);
+vkCreateGpaSessionAMD(device->handle, &copyInfo, nullptr, &secondaryCopy2);
+----
+
+When invoking a secondary command buffer multiple times, `vkCmdCopyGpaSessionResultsAMD` is used to copy the previous measurements to one of the cloned session objects.  The GPA session that was referenced on the secondary command buffer is baked into that command buffer.  If the caller would like to collect a new set of performance counters, a new GPA session should be created, and the secondary command buffer will also need to be recreated.
+
+[source,c]
+----
+// Run secondaryCmdbuf.  This writes measurements to secondarySession
+vkCmdExecuteCommands(primaryCmdbuf->handle, 1, &secondaryCmdbuf->handle);
+
+// After invoking, copy measurements from secondarySession to secondaryCopy1
+vkCmdCopyGpaSessionResultsAMD(primaryCmdbuf->handle, secondaryCopy1);
+
+// Run secondaryCmdbuf again.  This overwrites measurements in secondarySession
+vkCmdExecuteCommands(primaryCmdbuf->handle, 1, &secondaryCmdbuf->handle);
+
+// Copy second invocation’s measurements to secondaryCopy2
+vkCmdCopyGpaSessionResultsAMD(primaryCmdbuf->handle, secondaryCopy2);
+
+// Run secondaryCmdbuf a third and final time.  No need to copy
+vkCmdExecuteCommands(primaryCmdbuf->handle, 1, &secondaryCmdbuf->handle);
+----
+
+== Validation and Tools
+
+This extension is already used by RenderDoc, and other tools.

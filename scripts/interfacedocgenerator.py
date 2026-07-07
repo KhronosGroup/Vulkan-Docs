@@ -40,6 +40,16 @@ class InterfaceDocGenerator(OutputGenerator):
         OutputGenerator.endFeature(self)
 
     def writeNewInterfaces(self, feature, key, title, markup, fp):
+        """Generate lists of interfaces for an API feature
+
+         - feature - name of the feature being generated
+         - key - label of API element being generated, used to index into
+           the featureDictionary for this feature
+         - title - title for the subsection of the feature documentation for
+           this type of API element
+         - markup - API macro prefix for this type of API element
+         - fp - file being written"""
+
         dict = self.featureDictionary[feature][key]
 
         parentmarkup = markup
@@ -47,7 +57,7 @@ class InterfaceDocGenerator(OutputGenerator):
             parentmarkup = 'elink:'
 
         if dict:
-            write(f"=== {title}", file=fp)
+            write(f'=== {title}', file=fp)
             write('',file=fp)
 
             # Loop through required blocks, sorted so they start with "core" features
@@ -71,26 +81,34 @@ class InterfaceDocGenerator(OutputGenerator):
                 # Commands are relatively straightforward
                 if key == 'command':
                     for api in sorted(dict[required]):
-                        write(f"  * {markup}{api}", file=fp)
+                        write(f'  * {markup}{api}', file=fp)
                 # Types and constants are potentially parented, so need to handle that
                 else:
                     # Loop through parents, sorted so they start with unparented items
                     for parent in sorted(dict[required], key = interfaceDocSortKey):
                         parentstring = ''
                         if parent:
-                            parentstring = parentmarkup + f", {markup}".join(parent.split(','))
-                            write(f"  * Extending {parentstring}:", file=fp)
+                            # Do not display the parents not in this spec build
+                            parentlist = []
+                            for p in parent.split(','):
+                                if self.registry.typedict[p].required:
+                                    parentlist.append(parentmarkup + p)
+                                else:
+                                    print(f'Dropping {p} from extending structs')
+                            parentstring = ', '.join(parentlist)
+                            write(f'  * Extending {parentstring}:', file=fp)
+
                             for api in sorted(dict[required][parent]):
-                                write(f"  ** {markup}{api}", file=fp)
+                                write(f'  ** {markup}{api}', file=fp)
                         else:
                             # Do not emit _EXTENSION_NAME and _SPEC_VERSION
                             # 'enums' as linkable spec macros, because they
                             # are not APIs.
                             for api in sorted(dict[required][parent]):
                                 if api.endswith('_EXTENSION_NAME') or api.endswith('_SPEC_VERSION'):
-                                    write(f"  * etext:{api}", file=fp)
+                                    write(f'  * etext:{api}', file=fp)
                                 else:
-                                    write(f"  * {markup}{api}", file=fp)
+                                    write(f'  * {markup}{api}', file=fp)
 
                 write('', file=fp)
 
@@ -101,7 +119,7 @@ class InterfaceDocGenerator(OutputGenerator):
         - feature - name of the feature being generated"""
 
         filename = feature + self.genOpts.conventions.file_suffix
-        fp = open(f"{self.genOpts.directory}/{filename}", 'w', encoding='utf-8')
+        fp = open(f'{self.genOpts.directory}/{filename}', 'w', encoding='utf-8')
 
         # Write out the lists of new interfaces added by the feature
         self.writeNewInterfaces(feature, 'define',      'New Macros',           'dlink:',   fp)

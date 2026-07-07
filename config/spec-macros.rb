@@ -37,4 +37,16 @@ Asciidoctor::Extensions.register do
     inline_macro AttrInlineMacro
     inline_macro TagInlineMacro
     inline_macro UndefinedInlineMacro
+
+    # Enable the sourcemap, which must be done for correct source_location
+    # error reporting in the inline macro processor extensions, although the
+    # "Log from an Extension" section of the Asciidoctor docs is not as
+    # clear on this as it should be.
+
+    preprocessor do
+        process do |doc, reader|
+            doc.sourcemap = true
+            nil
+        end
+    end
 end

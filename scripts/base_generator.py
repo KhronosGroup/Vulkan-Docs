@@ -198,6 +198,14 @@ class BaseGenerator(OutputGenerator):
         self.enumFieldMap: dict[str, EnumField] = dict()
         self.flagMap: dict[str, Flag] = dict()
 
+        # Track (extension_name, item_name) -> require_section_depends for building extensionRequirement
+        # This maps (ext, type/command/enum name) pairs to their require section's depends string
+        self.itemRequireSectionDepends: dict[tuple[str, str], str] = dict()
+
+        # Track item_name -> list of extensions that DIRECTLY reference this exact name
+        # (not via alias). Used for building extensionRequirement accurately.
+        self.itemDefiningExtensions: dict[str, list[str]] = dict()
+
     # De-aliases a definition name based on the specified alias map.
     # There are aliases of aliases.
     # e.g. VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTER_FEATURES_KHR aliases
@@ -279,11 +287,6 @@ class BaseGenerator(OutputGenerator):
             for required in dict:
                 # group can be a Enum or Bitmask
                 for group in dict[required]:
-                    if group in self.vk.handles:
-                        handle = self.vk.handles[group]
-                        # Make sure list is unique
-                        handle.extensions.extend([extension.name] if extension.name not in handle.extensions else [])
-                        extension.handles[group].extend([handle] if handle not in extension.handles[group] else [])
                     if group in self.vk.enums:
                         if group not in extension.enumFields:
                             extension.enumFields[group] = [] # Dict needs init
@@ -308,11 +311,27 @@ class BaseGenerator(OutputGenerator):
                             bitmask.flagExtensions.extend([extension.name] if extension.name not in bitmask.flagExtensions else [])
                             flags.extensions.extend([extension.name] if extension.name not in flags.extensions else [])
                             extension.flagBits[group].extend([flags] if flags not in extension.flagBits[group] else [])
-                    if group in self.vk.flags:
-                        flags = self.vk.flags[group]
-                        # Make sure list is unique
-                        flags.extensions.extend([extension.name] if extension.name not in flags.extensions else [])
-                        extension.flags.extend([flags] if flags not in extension.flags[group] else [])
+
+            dict = self.featureDictionary[extension.name]['bitmask']
+            for required in dict:
+                for dep in dict[required]:
+                    for group in dict[required][dep]:
+                        if group in self.vk.flags:
+                            flags = self.vk.flags[group]
+                            # Make sure list is unique
+                            flags.extensions.extend([extension.name] if extension.name not in flags.extensions else [])
+                            extension.flags.extend([flags] if flags not in extension.flags else [])
+
+            # Because of union, things like VkTensorARM is both in the ARM extension and VK_EXT_descriptor_heap
+            dict = self.featureDictionary[extension.name]['handle']
+            for required in dict:
+                for dep in dict[required]:
+                    for group in dict[required][dep]:
+                        if group in self.vk.handles:
+                            handle = self.vk.handles[group]
+                            # Make sure list is unique
+                            handle.extensions.extend([extension.name] if extension.name not in handle.extensions else [])
+                            extension.handles.extend([handle] if handle not in extension.handles else [])
 
         # Need to do 'enum'/'bitmask' after 'enumconstant' has applied everything so we can add implicit extensions
         #
@@ -395,20 +414,165 @@ class BaseGenerator(OutputGenerator):
 
         # Could build up a reverse lookup map, but since these are not too large of list, just do here
         # (Need to be done after we have found all the aliases)
+        # Only append alias when the canonical (dealiased) entry exists in the target map; for APIs
+        # like VulkanSC some extensions/versions are excluded so the canonical may never have been added.
         for key, value in self.structAliasMap.items():
-            self.vk.structs[self.dealias(value, self.structAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.structAliasMap)
+            if canonical in self.vk.structs:
+                self.vk.structs[canonical].aliases.append(key)
         for key, value in self.enumFieldAliasMap.items():
-            self.enumFieldMap[self.dealias(value, self.enumFieldAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.enumFieldAliasMap)
+            if canonical in self.enumFieldMap:
+                self.enumFieldMap[canonical].aliases.append(key)
         for key, value in self.enumAliasMap.items():
-            self.vk.enums[self.dealias(value, self.enumAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.enumAliasMap)
+            if canonical in self.vk.enums:
+                self.vk.enums[canonical].aliases.append(key)
         for key, value in self.flagAliasMap.items():
-            self.flagMap[self.dealias(value, self.flagAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.flagAliasMap)
+            if canonical in self.flagMap:
+                self.flagMap[canonical].aliases.append(key)
         for key, value in self.bitmaskAliasMap.items():
-            self.vk.bitmasks[self.dealias(value, self.bitmaskAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.bitmaskAliasMap)
+            if canonical in self.vk.bitmasks:
+                self.vk.bitmasks[canonical].aliases.append(key)
         for key, value in self.flagsAliasMap.items():
-            self.vk.flags[self.dealias(value, self.flagsAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.flagsAliasMap)
+            if canonical in self.vk.flags:
+                self.vk.flags[canonical].aliases.append(key)
         for key, value in self.handleAliasMap.items():
-            self.vk.handles[self.dealias(value, self.handleAliasMap)].aliases.append(key)
+            canonical = self.dealias(value, self.handleAliasMap)
+            if canonical in self.vk.handles:
+                self.vk.handles[canonical].aliases.append(key)
+
+    def buildDefiningRequirements(self, itemName: str, extNames: list[str]) -> dict[str, str | None]:
+        if not extNames:
+            return {}
+
+        requirements = {}
+        for extName in sorted(extNames):
+            depends = self.itemRequireSectionDepends.get((extName, itemName))
+            requirements[extName] = depends
+
+        return requirements
+
+    # Update all types with full definingRequirements
+    # Use itemDefiningExtensions (exact names from require sections) instead of obj.extensions
+    # This ensures aliases do not add their extension to the base type's requirement
+    #
+    # See thread for more details why added
+    # https://gitlab.khronos.org/vulkan/vulkan/-/merge_requests/7872#note_591105
+    def buildFullExtensionRequirements(self):
+        for cmdName, cmd in self.vk.commands.items():
+            definingExts = self.itemDefiningExtensions.get(cmdName, [])
+            cmd.definingRequirements = self.buildDefiningRequirements(cmdName, definingExts)
+
+        for structName, struct in self.vk.structs.items():
+            definingExts = self.itemDefiningExtensions.get(structName, [])
+            struct.definingRequirements = self.buildDefiningRequirements(structName, definingExts)
+
+        for enumName, enum in self.vk.enums.items():
+            definingExts = self.itemDefiningExtensions.get(enumName, [])
+            enum.definingRequirements = self.buildDefiningRequirements(enumName, definingExts)
+
+        for bitmaskName, bitmask in self.vk.bitmasks.items():
+            definingExts = self.itemDefiningExtensions.get(bitmaskName, [])
+            bitmask.definingRequirements = self.buildDefiningRequirements(bitmaskName, definingExts)
+
+        for handleName, handle in self.vk.handles.items():
+            definingExts = self.itemDefiningExtensions.get(handleName, [])
+            handle.definingRequirements = self.buildDefiningRequirements(handleName, definingExts)
+
+        for flagsName, flags in self.vk.flags.items():
+            definingExts = self.itemDefiningExtensions.get(flagsName, [])
+            flags.definingRequirements = self.buildDefiningRequirements(flagsName, definingExts)
+
+        # Also update enum fields and bitmask flags with definingRequirements
+        # Separate base name requirements from alias requirements
+        for enum in self.vk.enums.values():
+            for field in enum.fields:
+                # Base name requirements only
+                baseDefiningExts = []
+                if field.name in self.itemDefiningExtensions:
+                    baseDefiningExts.extend(self.itemDefiningExtensions[field.name])
+
+                # Build base name requirements
+                baseRequirements = {}
+                for extName in baseDefiningExts:
+                    depends = self.itemRequireSectionDepends.get((extName, field.name))
+                    baseRequirements[extName] = depends
+
+                field.definingRequirements = baseRequirements
+
+                # Alias requirements separately
+                for alias in field.aliases:
+                    if alias in self.itemDefiningExtensions:
+                        aliasDefiningExts = self.itemDefiningExtensions[alias]
+                        # Build alias requirements
+                        aliasRequirements = {}
+                        for extName in aliasDefiningExts:
+                            depends = self.itemRequireSectionDepends.get((extName, alias))
+                            aliasRequirements[extName] = depends
+
+                        if aliasRequirements:
+                            self.vk.aliasFieldRequirements[alias] = aliasRequirements
+
+        for bitmask in self.vk.bitmasks.values():
+            for flag in bitmask.flags:
+                # Base name requirements only
+                baseDefiningExts = []
+                if flag.name in self.itemDefiningExtensions:
+                    baseDefiningExts.extend(self.itemDefiningExtensions[flag.name])
+
+                # Build base name requirements
+                baseRequirements = {}
+                for extName in baseDefiningExts:
+                    depends = self.itemRequireSectionDepends.get((extName, flag.name))
+                    baseRequirements[extName] = depends
+
+                flag.definingRequirements = baseRequirements
+
+                # Alias requirements separately
+                for alias in flag.aliases:
+                    if alias in self.itemDefiningExtensions:
+                        aliasDefiningExts = self.itemDefiningExtensions[alias]
+                        # Build alias requirements
+                        aliasRequirements = {}
+                        for extName in aliasDefiningExts:
+                            depends = self.itemRequireSectionDepends.get((extName, alias))
+                            aliasRequirements[extName] = depends
+
+                        if aliasRequirements:
+                            self.vk.aliasFlagRequirements[alias] = aliasRequirements
+
+        # Build definingRequirements for alias types (structs, handles, enums, bitmasks, flags)
+        # Alias types do not have objects (they return early in genType), so we store their requirements separately
+        # Note: Commands with aliases are still added to vk.commands (they do not return early),
+        # so they are already handled in the normal flow above and do not need special handling here
+        for aliasName in self.structAliasMap.keys():
+            definingExts = self.itemDefiningExtensions.get(aliasName, [])
+            if definingExts:
+                self.vk.aliasTypeRequirements[aliasName] = self.buildDefiningRequirements(aliasName, definingExts)
+
+        for aliasName in self.handleAliasMap.keys():
+            definingExts = self.itemDefiningExtensions.get(aliasName, [])
+            if definingExts:
+                self.vk.aliasTypeRequirements[aliasName] = self.buildDefiningRequirements(aliasName, definingExts)
+
+        for aliasName in self.enumAliasMap.keys():
+            definingExts = self.itemDefiningExtensions.get(aliasName, [])
+            if definingExts:
+                self.vk.aliasTypeRequirements[aliasName] = self.buildDefiningRequirements(aliasName, definingExts)
+
+        for aliasName in self.bitmaskAliasMap.keys():
+            definingExts = self.itemDefiningExtensions.get(aliasName, [])
+            if definingExts:
+                self.vk.aliasTypeRequirements[aliasName] = self.buildDefiningRequirements(aliasName, definingExts)
+
+        for aliasName in self.flagsAliasMap.keys():
+            definingExts = self.itemDefiningExtensions.get(aliasName, [])
+            if definingExts:
+                self.vk.aliasTypeRequirements[aliasName] = self.buildDefiningRequirements(aliasName, definingExts)
 
     def addConstants(self, constantNames: list[str]):
         for constantName in constantNames:
@@ -498,6 +662,9 @@ class BaseGenerator(OutputGenerator):
         # We do some post processing now
         self.applyExtensionDependency()
 
+        # Build full extensionRequirement for all types after extensions list is populated
+        self.buildFullExtensionRequirements()
+
         self.addConstants([k for k,v in self.registry.enumvaluedict.items() if v == 'API Constants'])
         self.addVideoCodecs()
 
@@ -579,6 +746,40 @@ class BaseGenerator(OutputGenerator):
                 featureStruct = feature.get('struct')
                 featureName = feature.get('name')
                 featureRequirement.append(FeatureRequirement(featureStruct, featureName, requireDepends))
+
+            # Build mapping from (extension, item_name) to their require section depends
+            # AND track which exact item names are in each extension's require sections
+            # This is used for building extensionRequirement later
+            for cmd in require.findall('command'):
+                cmdName = cmd.get('name')
+                if cmdName:
+                    if requireDepends:
+                        self.itemRequireSectionDepends[(name, cmdName)] = requireDepends
+                    # Track exact name -> defining extensions
+                    if cmdName not in self.itemDefiningExtensions:
+                        self.itemDefiningExtensions[cmdName] = []
+                    if name not in self.itemDefiningExtensions[cmdName]:
+                        self.itemDefiningExtensions[cmdName].append(name)
+            for typeElem in require.findall('type'):
+                typeName = typeElem.get('name')
+                if typeName:
+                    if requireDepends:
+                        self.itemRequireSectionDepends[(name, typeName)] = requireDepends
+                    # Track exact name -> defining extensions
+                    if typeName not in self.itemDefiningExtensions:
+                        self.itemDefiningExtensions[typeName] = []
+                    if name not in self.itemDefiningExtensions[typeName]:
+                        self.itemDefiningExtensions[typeName].append(name)
+            for enum in require.findall('enum'):
+                enumName = enum.get('name')
+                if enumName:
+                    if requireDepends:
+                        self.itemRequireSectionDepends[(name, enumName)] = requireDepends
+                    # Track exact name -> defining extensions
+                    if enumName not in self.itemDefiningExtensions:
+                        self.itemDefiningExtensions[enumName] = []
+                    if name not in self.itemDefiningExtensions[enumName]:
+                        self.itemDefiningExtensions[enumName].append(name)
 
         if interface.tag == 'extension':
             # Generator scripts built on BaseGenerator do not handle the `supported` attribute of extensions
@@ -702,7 +903,8 @@ class BaseGenerator(OutputGenerator):
         if cmdinfo.deprecatedlink:
             legacy = Legacy(cmdinfo.deprecatedlink,
                                   cmdinfo.deprecatedbyversion, # is just the string, will update to class later
-                                  cmdinfo.deprecatedbyextensions)
+                                  cmdinfo.deprecatedbyextensions,
+                                  cmdinfo.supersededby)
 
         protect = self.currentExtension.protect if self.currentExtension is not None else None
 
@@ -759,10 +961,13 @@ class BaseGenerator(OutputGenerator):
                 protect = elem.get('protect')
                 (valueInt, valueStr) = self.enumToValue(elem, True, bitwidth)
 
+                parent = elem.get('extends') or groupName
+                extending = elem.get('extends') is not None
+
                 # Some values have multiple extensions (ex VK_DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == fieldName), None) is None:
-                    self.enumFieldMap[fieldName] = EnumField(fieldName, [], protect, negative, valueInt, valueStr, [])
+                    self.enumFieldMap[fieldName] = EnumField(fieldName, [], parent, protect, negative, valueInt, valueStr, [], extending)
                     fields.append(self.enumFieldMap[fieldName])
 
             self.vk.enums[groupName] = Enum(groupName, [], groupProtect, bitwidth, True, fields, [], [])
@@ -799,11 +1004,13 @@ class BaseGenerator(OutputGenerator):
 
                 bitpos_val = elem.get('bitpos')
                 bitpos_int = int(bitpos_val) if bitpos_val else None
+                parent = elem.get('extends') or groupName
+                extending = elem.get('extends') is not None
 
                 # Some values have multiple extensions (ex VK_TOOL_PURPOSE_DEBUG_REPORTING_BIT_EXT)
                 # genGroup() lists them twice
                 if next((x for x in fields if x.name == flagName), None) is None:
-                    self.flagMap[flagName] = Flag(flagName, [], protect, valueInt, valueStr, bitpos_int, flagMultiBit, flagZero, [])
+                    self.flagMap[flagName] = Flag(flagName, [], parent, protect, valueInt, valueStr, bitpos_int, flagMultiBit, flagZero, [], extending)
                     fields.append(self.flagMap[flagName])
 
             flagName = groupName.replace('FlagBits', 'Flags')
@@ -883,7 +1090,7 @@ class BaseGenerator(OutputGenerator):
                 #     optional="true,false" for ppGeometries
                 #     optional="false,true" for pPhysicalDeviceCount
                 # the first is if the variable itself is optional
-                # the second is the value of the pointer is optional;
+                # the second is used if the variable is a pointer. It determines if the pointed value is optional
                 optionalValues = splitIfGet(member, 'optional')
                 optional = len(optionalValues) > 0 and optionalValues[0].lower() == "true"
                 optionalPointer = len(optionalValues) > 1 and optionalValues[1].lower() == "true"
@@ -909,10 +1116,6 @@ class BaseGenerator(OutputGenerator):
 
             dispatchable = typeElem.find('type').text == 'VK_DEFINE_HANDLE'
 
-            # Temp hack for https://gitlab.khronos.org/vulkan/vulkan/-/issues/4640
-            if typeName == 'VkTensorARM':
-                extension = ['VK_EXT_descriptor_heap', 'VK_ARM_tensors']
-
             self.vk.handles[typeName] = Handle(typeName, [], type, protect, parent, instance, device, dispatchable, extension)
 
         elif category == 'define':
@@ -933,10 +1136,6 @@ class BaseGenerator(OutputGenerator):
             bitmaskName = typeElem.get('bitvalues')
             if bitmaskName is None:
                 bitmaskName = typeElem.get('requires')
-
-            # Temp hack for https://gitlab.khronos.org/vulkan/vulkan/-/issues/4640
-            if typeName == 'VkTensorViewCreateFlagsARM':
-                extension = ['VK_EXT_descriptor_heap', 'VK_ARM_tensors']
 
             self.vk.flags[typeName] = Flags(typeName, [], bitmaskName, protect, baseFlagsType, bitWidth, True, extension)
 

@@ -1,5 +1,4 @@
 // Copyright 2015-2026 The Khronos Group Inc.
-//
 // SPDX-License-Identifier: CC-BY-4.0
 
 [appendix]
@@ -269,9 +268,13 @@ or knowledge of runtime information, such as enabled features.
   * [[VUID-StandaloneSpirv-MemorySemantics-10873]]
     code:MemorySemantics with code:MakeVisible bit set must: use
     code:Acquire or code:AcquireRelease memory order
-  * [[VUID-StandaloneSpirv-MemorySemantics-10874]]
+  * [[VUID-StandaloneSpirv-MemorySemantics-13551]]
     code:MemorySemantics with code:Volatile bit set must: not be used with
-    barrier instructions (code:OpControlBarrier or code:OpMemoryBarrier)
+    barrier instructions (code:OpControlBarrier,
+ifdef::VK_EXT_shader_split_barrier[]
+    code:OpControlBarrierArriveEXT, code:OpControlBarrierWaitEXT,
+endif::VK_EXT_shader_split_barrier[]
+    or code:OpMemoryBarrier)
   * [[VUID-StandaloneSpirv-UnequalMemorySemantics-10875]]
     code:UnequalMemorySemantics of code:OpAtomicCompareExchange must: not
     use code:Release or code:AcquireRelease memory order
@@ -370,8 +373,9 @@ or knowledge of runtime information, such as enabled features.
     code:ConstOffsets image operand, must: only consume a "`Sampled Image`"
     operand whose type has its "`Sampled`" operand set to 1
   * [[VUID-StandaloneSpirv-OpImageGather-04664]]
-    The "`Component`" operand of code:OpImageGather, and
-    code:OpImageSparseGather must: be the <id> of a constant instruction
+    The "`Component`" operand of code:OpImageGather,
+ifdef::VK_QCOM_image_processing3[code:OpImageGatherQCOM,]
+    and code:OpImageSparseGather must: be the <id> of a constant instruction
   * [[VUID-StandaloneSpirv-OpImage-04777]]
     code:OpImage*Dref* instructions must: not consume an image whose `Dim`
     is 3D
@@ -585,6 +589,20 @@ or knowledge of runtime information, such as enabled features.
     If code:OpControlBarrier is used in ray generation, intersection,
     any-hit, closest hit, miss, fragment, vertex, tessellation evaluation,
     or geometry shaders, the execution Scope must: be code:Subgroup
+ifdef::VK_EXT_shader_split_barrier[]
+  * [[VUID-StandaloneSpirv-SplitBarrierEXT-13552]]
+    The code:SplitBarrierEXT capability must: not be enabled in any stage
+    other than compute
+  * [[VUID-StandaloneSpirv-OpControlBarrierArriveEXT-13553]]
+    The execution Scope for code:OpControlBarrierArriveEXT and
+    code:OpControlBarrierWaitEXT must: be code:Workgroup or code:Subgroup
+  * [[VUID-StandaloneSpirv-MemorySemantics-13556]]
+    The code:MemorySemantics for code:OpControlBarrierArriveEXT must: not
+    have any non-relaxed memory order set other than code:Release
+  * [[VUID-StandaloneSpirv-MemorySemantics-13557]]
+    The code:MemorySemantics for code:OpControlBarrierWaitEXT must: not have
+    any non-relaxed memory order set other than code:Acquire
+endif::VK_EXT_shader_split_barrier[]
   * [[VUID-StandaloneSpirv-None-10685]]
     Either a code:TileShadingRateQCOM, code:LocalSize, or code:LocalSizeId
     {ExecutionMode}, or an object decorated with the code:WorkgroupSize
@@ -731,10 +749,6 @@ or knowledge of runtime information, such as enabled features.
   * [[VUID-StandaloneSpirv-OpTypeForwardPointer-04711]]
     code:OpTypeForwardPointer must: have a {StorageClass} of
     code:PhysicalStorageBuffer
-  * [[VUID-StandaloneSpirv-None-04745]]
-    All block members in a variable with a {StorageClass} of
-    code:PushConstant declared as an array must: only be accessed by
-    dynamically uniform indices
   * [[VUID-StandaloneSpirv-OpVariable-06673]]
     There must: be at most one variable in the code:PushConstant
     {StorageClass} listed in the code:Interface for each code:OpEntryPoint
@@ -937,14 +951,20 @@ or knowledge of runtime information, such as enabled features.
     derived from a variable decorated with code:Binding and
     code:DescriptorSet, or decorated with code:BuiltIn and
     code:ResourceHeapEXT
-  * [[VUID-StandaloneSpirv-Result-11346]]
-    The code:Result code:Type operand of code:OpBufferPointerEXT must: have
-    a code:Type operand that is <<interfaces-resources-layout, explicitly
-    laid out>>
   * [[VUID-StandaloneSpirv-OpTypeUntypedPointerKHR-11417]]
     The {StorageClass} of code:OpTypeUntypedPointerKHR must: be code:Image,
     code:UniformConstant,code:Workgroup, code:StorageBuffer, code:Uniform,
     code:PushConstant, or code:PhysicalStorageBuffer
+  * [[VUID-StandaloneSpirv-None-12295]]
+    If the code:LongVectorEXT capability is not declared, the code:Component
+    code:Count of any vector type must: be less than or equal to `4` and
+    greater than `1`
+  * [[VUID-StandaloneSpirv-Type-12297]]
+    Any pointer type whose code:Type parameter is a vector type with more
+    than four components (or an aggregate containing such a type) must: have
+    {StorageClass} of code:Function, code:Private, code:Uniform,
+    code:Workgroup, code:StorageBuffer, code:PhysicalStorageBuffer,
+    code:PushConstant, or code:ShaderRecordBufferKHR
 ****
 --
 
@@ -1188,6 +1208,10 @@ ifdef::VK_COMPUTE_VERSION_1_1[]
     texel buffer, the storage texel buffer through which that memory is
     accessed must: be dynamically uniform within the invocation group
 endif::VK_COMPUTE_VERSION_1_1[]
+  * [[VUID-RuntimeSpirv-None-04745]]
+    All block members in a variable with a {StorageClass} of
+    code:PushConstant declared as an array must: only be accessed by
+    dynamically uniform indices
   * [[VUID-RuntimeSpirv-None-10148]]
     If an instruction accesses memory through any resource,
 ifdef::VK_COMPUTE_VERSION_1_1[]
@@ -1741,6 +1765,13 @@ ifdef::VK_NV_cooperative_matrix2[]
     minus
     <<limits-cooperativeMatrixWorkgroupScopeReservedSharedMemory,pname:cooperativeMatrixWorkgroupScopeReservedSharedMemory>>
 endif::VK_NV_cooperative_matrix2[]
+ifdef::VK_NV_cooperative_matrix_decode_vector[]
+  * [[VUID-{refpage}-OpCooperativeMatrixLoadTensorNV-12429]]
+    For each code:OpCooperativeMatrixLoadTensorNV instruction that includes
+    *DecodeVectorFunc* in *Tensor Addressing Operands*, the tensor block
+    size in the innermost dimension must: be a multiple of the number of
+    components of the *DecodeVectorFunc* function's return type.
+endif::VK_NV_cooperative_matrix_decode_vector[]
   * [[VUID-RuntimeSpirv-cooperativeMatrixSupportedStages-08985]]
     code:OpTypeCooperativeMatrixKHR and code:OpCooperativeMatrix*
     instructions must: not be used in shader stages not included in
@@ -1750,11 +1781,18 @@ endif::VK_NV_cooperative_matrix2[]
     code:OpCooperativeMatrix*KHR instructions must: be created with the
     ename:VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT flag or
     the shader module must be version 1.6 or greater
+ifdef::VK_EXT_shader_object[]
+ifdef::VK_COMPUTE_VERSION_1_3,VK_EXT_subgroup_size_control[]
   * [[VUID-RuntimeSpirv-OpTypeCooperativeMatrixKHR-10771]]
     Any shader object containing code:OpTypeCooperativeMatrixKHR or
     code:OpCooperativeMatrix*KHR instructions must: be created with the
     ename:VK_SHADER_CREATE_REQUIRE_FULL_SUBGROUPS_BIT_EXT flag or the shader
     module must be version 1.6 or greater
+endif::VK_COMPUTE_VERSION_1_3,VK_EXT_subgroup_size_control[]
+endif::VK_EXT_shader_object[]
+  * [[VUID-{refpage}-OpCooperativeMatrix-12379]]
+    If any code:OpCooperativeMatrix* instructions accesses a descriptor, it
+    must: not be a null descriptor
 endif::VK_KHR_cooperative_matrix[]
 ifdef::VK_NV_cooperative_matrix[]
   * [[VUID-RuntimeSpirv-OpCooperativeMatrixLoadNV-06324]]
@@ -1970,11 +2008,11 @@ ifdef::VK_EXT_mesh_shader[]
     {StorageClass} in the code:TaskEXT {ExecutionModel} must: be less than
     or equal to <<limits-maxTaskPayloadAndSharedMemorySize,
     pname:maxTaskPayloadAndSharedMemorySize>>
-  * [[VUID-RuntimeSpirv-MeshEXT-10883]]
-    If the code:MeshEXT {ExecutionModel} declares a variable with the
-    code:TaskPayloadWorkgroupEXT {StorageClass} in the entry point, there
-    must be a matching code:TaskPayloadWorkgroupEXT {StorageClass} variable
-    in the code:TaskEXT {ExecutionModel} passed as an argument to
+  * [[VUID-{refpage}-MeshEXT-12380]]
+    If the code:MeshEXT {ExecutionModel} dynamically accesses a variable
+    with the code:TaskPayloadWorkgroupEXT {StorageClass}, there must be a
+    matching code:TaskPayloadWorkgroupEXT {StorageClass} variable in the
+    code:TaskEXT {ExecutionModel} passed as an argument to
     code:OpEmitMeshTasksEXT
 endif::VK_EXT_mesh_shader[]
 ifdef::VK_KHR_cooperative_matrix[]
@@ -2235,14 +2273,17 @@ endif::VK_NV_shader_atomic_float16_vector[]
   * [[VUID-RuntimeSpirv-NonWritable-06340]]
     If the <<features-fragmentStoresAndAtomics,
     pname:fragmentStoresAndAtomics>> feature is not enabled, then all
-    storage image, storage texel buffer, and storage buffer variables in the
-    fragment stage must: be decorated with the code:NonWritable decoration
+    storage image, storage texel buffer,
+ifdef::VK_ARM_tensors[storage tensor,]
+    and storage buffer variables in the fragment stage must: be decorated
+    with the code:NonWritable decoration
   * [[VUID-RuntimeSpirv-NonWritable-06341]]
     If the <<features-vertexPipelineStoresAndAtomics,
     pname:vertexPipelineStoresAndAtomics>> feature is not enabled, then all
-    storage image, storage texel buffer, and storage buffer variables in the
-    vertex, tessellation, and geometry stages must: be decorated with the
-    code:NonWritable decoration
+    storage image, storage texel buffer,
+ifdef::VK_ARM_tensors[storage tensor,]
+    and storage buffer variables in the vertex, tessellation, and geometry
+    stages must: be decorated with the code:NonWritable decoration
 ifdef::VKSC_VERSION_1_0[]
   * [[VUID-RuntimeSpirv-OpAtomic-05091]]
     If the <<features-shaderAtomicInstructions, shaderAtomicInstructions>>
@@ -2327,6 +2368,19 @@ ifdef::VK_KHR_ray_query[]
     by code:OpRayQueryGetRayTMinKHR with the same ray query object, and
     code:RayTmax is equal to the value of code:OpRayQueryGetIntersectionTKHR
     for the current committed intersection with the same ray query object
+ifdef::VK_KHR_opacity_micromap[]
+  * [[VUID-{refpage}-RayTracingOpacityMicromapKHR-11542]]
+    If the code:RayTracingOpacityMicromapKHR capability is not enabled, any
+    code:Rayflags operand provided to an instruction must: not contain
+    code:ForceOpacityMicromap2StateKHR
+ifdef::VK_EXT_opacity_micromap+VK_ARM_pipeline_opacity_micromap[]
+  * [[VUID-{refpage}-micromap-11630]]
+    If the code:OpacityMicromapIdKHR execution mode is specified with its
+    specialization constant operand equal to ename:VK_TRUE, the pipeline
+    must: not have been created with
+    ename:VK_PIPELINE_CREATE_2_DISALLOW_OPACITY_MICROMAP_BIT_ARM
+endif::VK_EXT_opacity_micromap+VK_ARM_pipeline_opacity_micromap[]
+endif::VK_KHR_opacity_micromap[]
 ifdef::VK_NV_ray_tracing_motion_blur[]
   * [[VUID-RuntimeSpirv-OpRayQueryGenerateIntersectionKHR-06354]]
     For code:OpRayQueryGenerateIntersectionKHR instructions,
@@ -2673,6 +2727,7 @@ ifdef::VK_KHR_maintenance8[]
 endif::VK_KHR_maintenance8[]
 ifndef::VK_KHR_maintenance8[Image]
     operand code:Offset must: only be used with code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[or code:OpImageGatherQCOM]
     instructions
 ifdef::VK_KHR_shader_untyped_pointers[]
   * [[VUID-RuntimeSpirv-Size-11165]]
@@ -2689,15 +2744,17 @@ ifdef::VK_KHR_shader_untyped_pointers[]
     Stride Assignment>>
 endif::VK_KHR_shader_untyped_pointers[]
   * [[VUID-RuntimeSpirv-OpImage-06376]]
-    If an code:OpImage*Gather operation has an image operand of code:Offset,
-    code:ConstOffset, or code:ConstOffsets the offset value must: be greater
-    than or equal to <<limits-minTexelGatherOffset,
-    pname:minTexelGatherOffset>>
+    If an code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[or code:OpImageGatherQCOM]
+    operation has an image operand of code:Offset, code:ConstOffset, or
+    code:ConstOffsets the offset value must: be greater than or equal to
+    <<limits-minTexelGatherOffset, pname:minTexelGatherOffset>>
   * [[VUID-RuntimeSpirv-OpImage-06377]]
-    If an code:OpImage*Gather operation has an image operand of code:Offset,
-    code:ConstOffset, or code:ConstOffsets the offset value must: be less
-    than or equal to <<limits-maxTexelGatherOffset,
-    pname:maxTexelGatherOffset>>
+    If an code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[or code:OpImageGatherQCOM]
+    operation has an image operand of code:Offset, code:ConstOffset, or
+    code:ConstOffsets the offset value must: be less than or equal to
+    <<limits-maxTexelGatherOffset, pname:maxTexelGatherOffset>>
   * [[VUID-RuntimeSpirv-OpImageSample-06435]]
     If an code:OpImageSample* or code:OpImageFetch* operation has an image
     operand of
@@ -2801,12 +2858,6 @@ ifdef::VK_QCOM_image_processing[]
     code:reference code:sampled code:image parameters must: have been
     created using an identical sampler object
   * [[VUID-RuntimeSpirv-OpImageBlockMatchSSDQCOM-06986]]
-    If an code:OpImageBlockMatchSSDQCOM or code:OpImageBlockMatchSADQCOM
-    operation is used, then code:target code:sampled code:image and
-    code:reference code:sampled code:image parameters must: have been
-    created with a sampler object with pname:unnormalizedCoordinates equal
-    to ename:VK_TRUE
-  * [[VUID-RuntimeSpirv-OpImageBlockMatchSSDQCOM-06987]]
     If an code:OpImageBlockMatchSSDQCOM or code:OpImageBlockMatchSADQCOM
     operation is used, then code:target code:sampled code:image and
     code:reference code:sampled code:image parameters must: have been
@@ -2936,12 +2987,6 @@ ifdef::VK_QCOM_image_processing2[]
     code:sampled code:image and code:reference code:sampled code:image
     parameters must: have been created with a sampler object with
     pname:unnormalizedCoordinates equal to ename:VK_TRUE
-  * [[VUID-RuntimeSpirv-OpImageBlockMatchWindow-09224]]
-    If a code:OpImageBlockMatchWindow*QCOM or
-    code:OpImageBlockMatchGather*QCOM operation is used, then code:target
-    code:sampled code:image and code:reference code:sampled code:image
-    parameters must: have been created with sampler object with
-    pname:unnormalizedCoordinates equal to ename:VK_TRUE
   * [[VUID-RuntimeSpirv-maxBlockMatchRegion-09225]]
     If a code:OpImageBlockMatchWindow*QCOM or
     code:OpImageBlockMatchGather*QCOM operation is used, then code:Block
@@ -2949,10 +2994,46 @@ ifdef::VK_QCOM_image_processing2[]
     pname:maxBlockMatchRegion>>
   * [[VUID-RuntimeSpirv-pNext-09226]]
     If a code:OpImageBlockMatchWindow*QCOM operation is used, then
-    code:target code:sampled code:image must: have been created using
-    asampler object that included
+    code:target code:sampled code:image must: have been created using a
+    sampler object that included
     slink:VkSamplerBlockMatchWindowCreateInfoQCOM in the pname:pNext chain
 endif::VK_QCOM_image_processing2[]
+ifdef::VK_EXT_shader_split_barrier[]
+  * [[VUID-RuntimeSpirv-OpControlBarrierArriveEXT-13558]]
+    If a code:OpControlBarrierArriveEXT or code:OpControlBarrierWaitEXT
+    instruction is executed with an execution scope equal to code:Workgroup,
+    its execution must: be inside _uniform control flow_ within the
+    invocation group
+  * [[VUID-RuntimeSpirv-OpControlBarrierWaitEXT-13559]]
+    If a code:OpControlBarrierWaitEXT instruction is executed, a
+    code:OpControlBarrierArriveEXT instruction with the same execution scope
+    must: have been executed previously
+  * [[VUID-RuntimeSpirv-OpControlBarrierWaitEXT-13560]]
+    If a code:OpControlBarrierWaitEXT instruction is executed, another
+    code:OpControlBarrierWaitEXT instruction with the same execution scope
+    must: not have been previously executed prior to the last executed
+    code:OpControlBarrierArriveEXT instruction with the same execution scope
+  * [[VUID-RuntimeSpirv-OpControlBarrierArriveEXT-13561]]
+    If a code:OpControlBarrierArriveEXT instruction is executed, another
+    code:OpControlBarrierArriveEXT instruction with the same execution scope
+    must: not have been previously executed unless a
+    code:OpControlBarrierWaitEXT instruction with the same execution scope
+    has been executed after it
+  * [[VUID-RuntimeSpirv-OpControlBarrierArriveEXT-13562]]
+    If the module uses code:OpControlBarrierArriveEXT or
+    code:OpControlBarrierWaitEXT, the sum of size in bytes for variables and
+    <<workgroup-padding, padding>> in the code:Workgroup {StorageClass} in
+    the code:GLCompute {ExecutionModel} must: be less than or equal to
+    <<limits-maxComputeSharedMemorySize, pname:maxComputeSharedMemorySize>>
+    minus
+    <<limits-splitBarrierReservedSharedMemory,pname:splitBarrierReservedSharedMemory>>
+endif::VK_EXT_shader_split_barrier[]
+ifdef::VK_QCOM_shader_multiple_wait_queues[]
+  * [[VUID-{refpage}-maxShaderWaitQueues-12426]]
+    The literal operand of the code:MultipleWaitQueuesQCOM Loop Control
+    must: be less than or equal to
+    slink:VkPhysicalDeviceShaderMultipleWaitQueuesPropertiesQCOM::pname:maxShaderWaitQueues
+endif::VK_QCOM_shader_multiple_wait_queues[]
 ifdef::VK_KHR_shader_maximal_reconvergence[]
   * [[VUID-RuntimeSpirv-MaximallyReconvergesKHR-09565]]
     The execution mode code:MaximallyReconvergesKHR must: not be applied to
@@ -3088,6 +3169,9 @@ ifdef::VK_QCOM_image_processing[]
   ** code:OpImageBoxFilterQCOM
   ** code:OpImageBlockMatch*QCOM
 endif::VK_QCOM_image_processing[]
+ifdef::VK_QCOM_image_processing3[]
+  ** code:OpImageGatherQCOM
+endif::VK_QCOM_image_processing3[]
 endif::VK_QCOM_tile_shading[]
 ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-RuntimeSpirv-OpTypeSampler-12203]]
@@ -3303,24 +3387,11 @@ ifdef::VK_EXT_shader_64bit_indexing[]
     does not set the code:Shader64BitIndexingEXT execution mode
 endif::VK_EXT_shader_64bit_indexing[]
 endif::VK_NV_cooperative_vector[]
-  * [[VUID-RuntimeSpirv-None-12295]]
-    {empty}
-ifdef::VK_EXT_shader_long_vector[]
-    If the <<features-longVector,pname:longVector>> feature is not enabled,
-endif::VK_EXT_shader_long_vector[]
-    the code:Component code:Count of any vector type must: be less than or
-    equal to `4` and greater than `1`
 ifdef::VK_EXT_shader_long_vector[]
   * [[VUID-RuntimeSpirv-longVector-12296]]
     If the <<features-longVector,pname:longVector>> feature is enabled, the
     code:Component code:Count of any vector type must: be less than or equal
     to <<limits-maxVectorComponents,pname:maxVectorComponents>>
-  * [[VUID-RuntimeSpirv-Type-12297]]
-    Any pointer type whose code:Type parameter is a vector type with more
-    than four components (or an aggregate containing such a type) must: have
-    {StorageClass} of code:Function, code:Private, code:Uniform,
-    code:Workgroup, code:StorageBuffer, code:PhysicalStorageBuffer,
-    code:PushConstant, or code:ShaderRecordBufferKHR.
 endif::VK_EXT_shader_long_vector[]
 ifdef::VK_EXT_descriptor_heap[]
   * [[VUID-RuntimeSpirv-samplerDescriptorAlignment-11348]]
@@ -3450,8 +3521,8 @@ endif::VK_KHR_ray_tracing_pipeline,VK_NV_ray_tracing[]
     code:Type of that code:OpTypeImage must: correspond to a descriptor with
     a elink:VkFormat that matches as described by <<spirvenv-image-formats,
     Compatibility Between SPIR-V Image Formats and Vulkan Formats>> and
-    <<spirvenv-format-type-matching, Image Format and Type Matching>>
-    Between SPIR-V Image Formats and Vulkan Formats>>
+    <<spirvenv-format-type-matching, Image Format and Type Matching Between
+    SPIR-V Image Formats and Vulkan Formats>>
   * [[VUID-RuntimeSpirv-Result-11345]]
     If the code:Result code:Type operand of code:OpLoad is code:OpTypeImage,
     and code:Pointer is derived from a variable decorated with
@@ -3747,8 +3818,8 @@ If the code:NoContraction decoration is applied then operations may not be
 rearranged, so, for example, [eq]#a + a - a# must account for possible
 overflow to infinity.
 If infinities are not preserved then the expression may be replaced with
-[eq]#a#, since the replacement is exact when overflow does not occur and
-infinities may be replaced with undefined: values.
+[eq]#a# despite the code:NoContraction decoration, since the replacement is
+exact when overflow does not occur.
 If both code:NoContraction and code:SignedZeroInfNanPreserve are used then
 the result must be infinity for sufficiently large [eq]#a#.
 ====
@@ -3763,13 +3834,17 @@ rounding (correctly rounded), as an error bound in ULP, or as inherited from
 a formula as follows:
 
 [[spirvenv-correct-result]]
-.Correct Result
+[float]
+==== Correct Result
+
 Operations that are described as returning the "`correct result`" will
 return the infinitely precise result which, due to the nature of the
 operation, will not need rounding.
 
 [[spirvenv-correctly-rounded]]
-.Correctly Rounded
+[float]
+==== Correctly Rounded
+
 Operations described as "`correctly rounded`" will return the infinitely
 precise result, [eq]#x#, rounded so as to be representable in
 floating-point.
@@ -3801,7 +3876,9 @@ rounded with implementation-defined rounding mode`".
 endif::VK_COMPUTE_VERSION_1_2,VK_KHR_shader_float_controls[]
 
 [[spirvenv-correctly-rounded-impl-defined]]
-.Correctly Rounded with Implementation-Defined Rounding Mode
+[float]
+==== Correctly Rounded with Implementation-Defined Rounding Mode
+
 Operations described as "`correctly rounded with implementation-defined
 rounding mode`" will return the infinitely precise result, [eq]#x#, rounded
 so as to be representable in floating-point.
@@ -3812,7 +3889,9 @@ returned.
 Which value is chosen is implementation-defined.
 
 [[spirvenv-ulp]]
-.ULP
+[float]
+==== ULP
+
 Where an error bound of [eq]#n# ULP (units in the last place) is given, for
 an operation with infinitely precise result #x# the value returned must: be
 in the range [eq]#[x - n {times} ulp(x), x {plus} n {times} ulp(x)]#.
@@ -3832,9 +3911,12 @@ operations may:, additionally, return either an infinity of the appropriate
 sign or the finite number with the largest magnitude of the appropriate
 sign.
 If the infinitely precise result of the operation is not mathematically
-defined then the value returned is undefined:.
+defined then the value returned is poison.
 
-.Inherited From ...
+[[spirvenv-inherited-from]]
+[float]
+==== Inherited From ...
+
 Where an operation's precision is described as being inherited from a
 formula, the result returned must: be at least as accurate as the result of
 computing an approximation to [eq]#x# using a formula equivalent to the
@@ -4074,7 +4156,7 @@ where latexmath:[t = clamp(\frac{x - edge0}{edge1 - edge0}, 0.0, 1.0)].
 GLSL.std.450 extended instructions specifically defined in terms of the
 above instructions inherit the above errors.
 GLSL.std.450 extended instructions not listed above and not defined in terms
-of the above have undefined: precision.
+of the above have implementation-defined precision.
 
 ifdef::VK_KHR_maintenance8[]
 If the <<features-maintenance8,pname:maintenance8>> feature is not enabled
@@ -4082,7 +4164,7 @@ and if
 endif::VK_KHR_maintenance8[]
 ifndef::VK_KHR_maintenance8[If]
 either operand to code:OpSRem and code:OpSMod instructions is negative the
-result is undefined:.
+result is poison.
 
 [NOTE]
 ====
@@ -4250,6 +4332,7 @@ endif::VK_NV_cooperative_vector[]
 
 endif::VK_EXT_shader_64bit_indexing[]
 
+
 [[spirvenv-image-signedness]]
 == Signedness of SPIR-V Image Accesses
 
@@ -4293,7 +4376,7 @@ Every access that is made to the image must: have a signedness equal to that
 in the _Signedness_ column (where applicable).
 
 [options="autowidth"]
-|===
+|====
 | Image Format       | Type-Declaration instructions | Bit Width | Signedness
 
 | code:Unknown       | Any                  | Any       | Any
@@ -4338,7 +4421,7 @@ in the _Signedness_ column (where applicable).
 | code:R8ui
 | code:R64i       .2+| code:OpTypeInt    .2+| 64        | 1
 | code:R64ui                                            | 0
-|===
+|====
 
 [[spirv-type]]
 The _SPIR-V Type_ is defined by an instruction in SPIR-V, declared with the
@@ -4351,6 +4434,7 @@ Type-Declaration Instruction, Bit Width, and Signedness from above.
 SPIR-V code:Image code:Dim values are compatible with slink:VkImageView
 pname:viewType values as defined below:
 
+[[spirvenv-spir-v-and-vulkan-imageview-dimension-compatibility-table]]
 .SPIR-V and Vulkan ImageView Dimension Compatibility
 [cols="2*", options="header"]
 |====
@@ -4368,6 +4452,7 @@ pname:viewType values as defined below:
 SPIR-V code:Image code:Format values are compatible with elink:VkFormat
 values as defined below:
 
+[[spirvenv-spir-v-and-vulkan-image-format-compatibility-table]]
 .SPIR-V and Vulkan Image Format Compatibility
 [cols="2*", options="header"]
 |====
@@ -4397,21 +4482,29 @@ ifdef::VK_ARM_tensors[]
 SPIR-V Tensor code:Element code:Type values are compatible with
 elink:VkFormat values as defined below:
 
+[[spirvenv-spir-v-tensor-element-type-and-vulkan-format-compatibility-table]]
 .SPIR-V Tensor Element Type and Vulkan Format Compatibility
 [cols="2*", options="header"]
 |====
 |SPIR-V Tensor Element Type    |Compatible Vulkan Formats
 |code:OpTypeBool               |ename:VK_FORMAT_R8_BOOL_ARM
+ifdef::VK_EXT_shader_float8[]
+|`OpTypeFloat 8 Float8E4M3EXT` |ename:VK_FORMAT_R8_SFLOAT_FPENCODING_FLOAT8E4M3_ARM
+|`OpTypeFloat 8 Float8E5M2EXT` |ename:VK_FORMAT_R8_SFLOAT_FPENCODING_FLOAT8E5M2_ARM
+endif::VK_EXT_shader_float8[]
 |`OpTypeFloat 16`              |ename:VK_FORMAT_R16_SFLOAT
+ifdef::VK_KHR_shader_bfloat16[]
+|`OpTypeFloat 16 BFloat16KHR`  |ename:VK_FORMAT_R16_SFLOAT_FPENCODING_BFLOAT16_ARM
+endif::VK_KHR_shader_bfloat16[]
 |`OpTypeFloat 32`              |ename:VK_FORMAT_R32_SFLOAT
 |`OpTypeFloat 64`              |ename:VK_FORMAT_R64_SFLOAT
-|`OpTypeInt 8 0`               |ename:VK_FORMAT_R8_UINT
+|`OpTypeInt 8 0`               |ename:VK_FORMAT_R8_UINT, ename:VK_FORMAT_R8_SINT
 |`OpTypeInt 8 1`               |ename:VK_FORMAT_R8_SINT
-|`OpTypeInt 16 0`              |ename:VK_FORMAT_R16_UINT
+|`OpTypeInt 16 0`              |ename:VK_FORMAT_R16_UINT, ename:VK_FORMAT_R16_SINT
 |`OpTypeInt 16 1`              |ename:VK_FORMAT_R16_SINT
-|`OpTypeInt 32 0`              |ename:VK_FORMAT_R32_UINT
+|`OpTypeInt 32 0`              |ename:VK_FORMAT_R32_UINT, ename:VK_FORMAT_R32_SINT
 |`OpTypeInt 32 1`              |ename:VK_FORMAT_R32_SINT
-|`OpTypeInt 64 0`              |ename:VK_FORMAT_R64_UINT
+|`OpTypeInt 64 0`              |ename:VK_FORMAT_R64_UINT, ename:VK_FORMAT_R64_SINT
 |`OpTypeInt 64 1`              |ename:VK_FORMAT_R64_SINT
 |====
 endif::VK_ARM_tensors[]

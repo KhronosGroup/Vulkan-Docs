@@ -143,6 +143,8 @@ STRUCTEXTENDS_REQUIRED_VARIABLE_PNEXT = (
 # enumeration functions
 CHECK_ARRAY_ENUMERATION_RETURN_CODE_EXCEPTIONS = set((
     'vkGetDeviceFaultInfoEXT',
+    'vkGetDeviceFaultReportsKHR',
+    'vkGetDeviceFaultDebugInfoKHR',
     'vkEnumerateDeviceLayerProperties',
     'vkGetDeviceSubpassShadingMaxWorkgroupSizeHUAWEI',
     'vkCreatePipelineBinariesKHR',
@@ -368,14 +370,20 @@ If you are working in an old branch using the old (non-enumerant) "queues" names
         Called from check_params."""
         super().check_param(param)
 
+        param_text = ''.join(param.itertext())
+        param_name = getElemName(param)
+        param_type = param.find('type').text
+
+        # Make sure parameter/member name and type name do not collide (pub2679)
+        if param_name == param_type:
+            message = f'{self.entity}.{param_name} member/parameter has an identical type name {param_type}, which is not allowed. Removing window system prefixes from the member/parameter is the most common fix.'
+            self.record_error(message, elem=param)
+
+        # The name match error above can happen with external types
         if not self.is_api_type(param):
             return
 
-        param_text = ''.join(param.itertext())
-        param_name = getElemName(param)
-
         # Make sure the number of leading 'p' matches the pointer count.
-        param_type = param.find('type').text
         pointercount = param.find('type').tail
         if pointercount:
             pointercount = pointercount.count('*')
@@ -454,7 +462,6 @@ which conflicts with VK_KHR_internally_synchronized_queues. Use \'externsync="ma
                 returnedonly = info.elem.get('returnedonly', 'false')
                 structextends = info.elem.get('structextends', '').split(',')
 
-
                 # Look for 'const' at beginning, rather than parsing
                 if next_member.text is None:
                     # Does not start with text, must not have leading 'const'
@@ -470,6 +477,11 @@ which conflicts with VK_KHR_internally_synchronized_queues. Use \'externsync="ma
                         if basename in structextends:
                             message = '{}.{} must not be \'const\' because this structure extends {}'.format(name, next_name, basename)
                             self.record_error(message)
+
+                if 'VkPhysicalDeviceFeatures2' in structextends:
+                    if not ('VkDeviceCreateInfo' in structextends):
+                        message = f'{name} structextends contains VkPhysicalDeviceFeatures2, so must also contain VkDeviceCreateInfo'
+                        self.record_error(message)
 
     def check_type_limittype(self, name, info):
         """Check whether a struct has 'limittype' attributes for members, if

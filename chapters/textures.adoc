@@ -1,26 +1,14 @@
 // Copyright 2015-2026 The Khronos Group Inc.
-//
 // SPDX-License-Identifier: CC-BY-4.0
 
 [[textures]]
-= Image Operations
+= Sampling
 
+Sampling is performed on <<images, images>>, typically in conjunction with a
+sampler, to return a value based on a neighborhood of texels in an image.
 
-== Image Operations Overview
-
-Vulkan Image Operations are operations performed on <<images, images>> by
-SPIR-V Image Instructions which take an code:OpTypeImage (representing a
-sname:VkImageView) or code:OpTypeSampledImage (representing a
-(sname:VkImageView, sname:VkSampler) pair).
-Read, write, and atomic operations also take texel coordinates as operands,
-and return a value based on a neighborhood of texture elements (_texels_)
-within the image.
-Query operations return properties of the bound image or of the lookup
-itself.
-The "`Depth`" operand of code:OpTypeImage is ignored.
-
-Image Operations include the functionality of the following SPIR-V Image
-Instructions:
+Sampling instructions include the functionality of the following SPIR-V
+Image Instructions:
 
   * code:OpImageSample* and code:OpImageSparseSample* read one or more
     neighboring texels of the image, and <<textures-texel-filtering,filter>>
@@ -37,11 +25,10 @@ Instructions:
   * code:OpImageFetch and code:OpImageSparseFetch return a single texel of
     the image.
     No sampler is used.
-  * code:OpImage*Gather and code:OpImageSparse*Gather read neighboring
-    texels and <<textures-gather,return a single component>> of each.
-  * code:OpImageRead (and code:OpImageSparseRead) and code:OpImageWrite read
-    and write, respectively, a texel in the image.
-    No sampler is used.
+  * code:OpImage*Gather,
+ifdef::VK_QCOM_image_processing3[code:OpImageGatherQCOM,]
+    and code:OpImageSparse*Gather read neighboring texels and
+    <<textures-gather,return a single component>> of each.
 ifdef::VK_NV_shader_image_footprint[]
   * code:OpImageSampleFootprintNV identifies and returns information about
     the set of texels in the image that would be accessed by an equivalent
@@ -52,10 +39,6 @@ endif::VK_NV_shader_image_footprint[]
     values.
   * code:OpImageSparse* instructions additionally return a
     <<textures-sparse-residency,sparse residency>> code.
-  * code:OpImageQuerySize, code:OpImageQuerySizeLod,
-    code:OpImageQueryLevels, and code:OpImageQuerySamples return properties
-    of the image descriptor that would be accessed.
-    The image itself is not accessed.
   * code:OpImageQueryLod returns the LOD parameters that would be used in a
     sample operation.
     The actual operation is not performed.
@@ -81,24 +64,27 @@ ifdef::VK_QCOM_image_processing2[]
     output.
 endif::VK_QCOM_image_processing2[]
 
+
 [[textures-texel-coordinate-systems]]
-=== Sampling Coordinate Systems
+== Sampling Coordinate Systems
 
-There are three _sampling coordinate systems_ used in this chapter:
+There are three sampling coordinate systems used in this chapter:
 
-  * normalized sampling coordinates [eq]#[0.0, 1.0]#
-  * unnormalized sampling coordinates [eq]#[0.0, width / height / depth)#
-  * integer sampling coordinates [eq]#[0, width / height / depth)#
+  * <<textures-sampling-coordinate-normalized,Normalized Sampling
+    Coordinates>>
+  * <<textures-sampling-coordinate-unnormalized,Unnormalized Sampling
+    Coordinates>>
+  * <<textures-sampling-coordinate-integer,Integer Sampling Coordinates>>
 
-SPIR-V code:OpImageFetch, code:OpImageSparseFetch, code:OpImageRead,
-code:OpImageSparseRead,
+SPIR-V
 ifdef::VK_QCOM_image_processing[]
 code:opImageBlockMatchSADQCOM, code:opImageBlockMatchSSDQCOM,
 endif::VK_QCOM_image_processing[]
 ifdef::VK_QCOM_image_processing2[]
 code:opImageBlockMatchWindowSADQCOM, code:opImageBlockMatchWindowSSDQCOM,
 endif::VK_QCOM_image_processing2[]
-and code:OpImageWrite instructions use integer sampling coordinates.
+code:OpImageFetch, and code:OpImageSparseFetch instructions use integer
+sampling coordinates.
 
 Other image instructions can: use either normalized or unnormalized sampling
 coordinates (selected by the pname:unnormalizedCoordinates state of the
@@ -112,8 +98,12 @@ only performed on normalized coordinates.
 The array layer coordinate is always treated as unnormalized even when other
 coordinates are normalized.
 
-Normalized texel coordinates are referred to as [eq]#(s,t,r,q,a)#, with the
-coordinates having the following meanings:
+
+[[textures-sampling-coordinate-normalized]]
+=== Normalized Sampling Coordinates
+
+Normalized sampling coordinates are referred to as [eq]#(s,t,r,q,a)#, with
+the coordinates having the following meanings:
 
   * [eq]#s#: Coordinate in the first dimension of an image.
   * [eq]#t#: Coordinate in the second dimension of an image.
@@ -121,6 +111,14 @@ coordinates having the following meanings:
   ** [eq]#(s,t,r)# are interpreted as a direction vector for Cube images.
   * [eq]#q#: Fourth coordinate, for homogeneous (projective) coordinates.
   * [eq]#a#: Coordinate for array layer.
+
+The values [eq]#s,t,r,q,a# are all floating-point values.
+Values of [eq]#s,t,r# in the normalized range [eq]#[0.0,1.0]# and [eq]#a# in
+the range [eq]#[0.0, layers - 1]# correspond to locations in the image being
+sampled, where [eq]#layers# is the dimension of the image with the same
+name.
+The value [eq]#q# is used as a divisor for each of [eq]#s,t,r#, rather than
+directly corresponding to a location in an image.
 
 The coordinates are extracted from the SPIR-V operand based on the
 dimensionality of the image variable and type of instruction.
@@ -133,13 +131,24 @@ code:Dim of the image and [eq]#a# being conditionally present based on the
 code:Arrayed property of the image.
 Projective image instructions are not supported on code:Arrayed images.
 
-Unnormalized texel coordinates are referred to as [eq]#(u,v,w,a)#, with the
-coordinates having the following meanings:
+
+[[textures-sampling-coordinate-unnormalized]]
+=== Unnormalized Sampling Coordinates
+
+Unnormalized sampling coordinates are referred to as [eq]#(u,v,w,a)#, with
+the coordinates having the following meanings:
 
   * [eq]#u#: Coordinate in the first dimension of an image.
   * [eq]#v#: Coordinate in the second dimension of an image.
   * [eq]#w#: Coordinate in the third dimension of an image.
   * [eq]#a#: Coordinate for array layer.
+
+
+The values [eq]#u,v,w,a# are all floating-point values, with values in the
+ranges [eq]#[0.0,width)#, [eq]#[0.0, height)#, [eq]#[0.0, depth)#, and
+[eq]#[0,layers-1]# corresponding to locations in the image being sampled.
+The values [eq]#width#, [eq]#height#, [eq]#depth#, and [eq]#layers# are the
+dimensions of the accessed <<images,image>>.
 
 Only the [eq]#u# and [eq]#v# coordinates are directly extracted from the
 SPIR-V operand, because only 1D and 2D (non-code:Arrayed) dimensionalities
@@ -148,6 +157,10 @@ The components are in order [eq]#(u [,v])#, with [eq]#v# being conditionally
 present when the dimensionality is 2D.
 When normalized coordinates are converted to unnormalized coordinates, all
 four coordinates are used.
+
+
+[[textures-sampling-coordinate-integer]]
+=== Integer Sampling Coordinates
 
 Integer sampling coordinates are referred to as [eq]#(i,j,k,l,n)#, with the
 coordinates having the following meanings:
@@ -158,6 +171,12 @@ coordinates having the following meanings:
   * [eq]#l#: Coordinate for array layer.
   * [eq]#n#: Index of the sample within the texel.
 
+The values [eq]#i,j,k,l,n# are all integer values, with values in the ranges
+[eq]#[0,width)#, [eq]#[0, height)#, [eq]#[0, depth)#, [eq]#[0,layers)#, and
+[eq]#[0,samples)# corresponding to locations in the image being sampled.
+The values [eq]#width#, [eq]#height#, [eq]#depth#, [eq]#layers#, and
+[eq]#samples# are the dimensions of the accessed <<images,image>>.
+
 They are extracted from the SPIR-V operand in order [eq]#(i [,j] [,k] [,l]
 [,n])#, with [eq]#j# and [eq]#k# conditionally present based on the code:Dim
 of the image, and [eq]#l# conditionally present based on the code:Arrayed
@@ -165,8 +184,8 @@ property of the image.
 [eq]#n# is conditionally present and is taken from the code:Sample image
 operand.
 
-Final integer coordinates are used as <<images, image coordinates>> to
-perform an <<images-reads,image read>> after sampling calculations, directly
+Integer coordinates are used as <<images, image coordinates>> to perform an
+<<images-reads,image read>> after sampling calculations, directly
 translating each coordinate as follows:
 
   * [eq]#i# -> [eq]#x#
@@ -178,23 +197,23 @@ translating each coordinate as follows:
 [eq]#level# is calculated separately via the code:Lod image operand if
 present, or is set to 0 otherwise.
 
-ifdef::VK_EXT_image_sliced_view_of_3d[]
-If an accessed image was created from a view using
-slink:VkImageViewSlicedCreateInfoEXT and accessed through a
-ename:VK_DESCRIPTOR_TYPE_STORAGE_IMAGE descriptor, then the value of [eq]#k#
-is incremented by slink:VkImageViewSlicedCreateInfoEXT::pname:sliceOffset,
-giving [eq]#k <- sliceOffset {plus} k#.
-The image's accessible range in the third dimension is [eq]#k < sliceOffset
-+ sliceCount#.
-If slink:VkImageViewSlicedCreateInfoEXT::pname:sliceCount is
-ename:VK_REMAINING_3D_SLICES_EXT, the range is inherited from the image's
-depth extent as specified by <<resources-image-mip-level-sizing, Image Mip
-Level Sizing>>.
-endif::VK_EXT_image_sliced_view_of_3d[]
+Integer sampling coordinates are used as <<images, image coordinates>> to
+perform an <<images-reads,image read>> after sampling calculations, directly
+translating each coordinate as follows:
 
-For all coordinate types, unused coordinates are assigned a value of zero.
+  * [eq]#x = i#
+  * [eq]#y = j#
+  * [eq]#z = k#
+  * [eq]#layer = l + slink:VkImageSubresourceRange::pname:baseArrayLayer#
+  * [eq]#sample = n#
+
 
 [[textures-texel-coordinate-systems-diagrams]]
+=== Sampling Coordinate Diagrams
+
+The following diagrams illustrate the different sampling coordinate systems
+for 2D images.
+
 image::{images}/vulkantexture0-ll.svg[align="center",title="Texel Coordinate Systems, Linear Filtering",opts="{imageopts}"]
 The Texel Coordinate Systems - For the example shown of an 8{times}4 texel
 two dimensional image.
@@ -281,10 +300,10 @@ endif::VK_QCOM_ycbcr_degamma[]
   * <<textures-sampler-YCbCr-conversion,{YCbCr} conversion>>
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
-For texel input instructions involving multiple texels (for sampling or
+For sampling instructions involving multiple texels (for sampling or
 gathering), these steps are applied for each texel that is used in the
 instruction.
-Depending on the type of image instruction, other steps are conditionally
+Depending on the type of sampling instruction, other steps are conditionally
 performed between these steps or involving multiple coordinate or texel
 values.
 
@@ -296,10 +315,12 @@ chroma reconstruction, before <<textures-sampler-YCbCr-conversion,sampler
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 ifdef::VK_QCOM_image_processing[]
-The operations described in <<textures-blockmatch,block matching>> and
-<<textures-weightimage,weight image sampling>> are performed before
-<<images-component-substitution>> and <<textures-component-swizzle,Component
-swizzle>>.
+The operations described in <<textures-blockmatch,block matching>> are
+performed before <<images-component-substitution>> during
+<<textures-texel-reads, texel read>>.
+
+The operations described in <<textures-weightimage,weight image sampling>>
+are performed before <<textures-component-swizzle,Component swizzle>>.
 endif::VK_QCOM_image_processing[]
 
 
@@ -318,7 +339,7 @@ There are a series of validations that the texel undergoes.
 There are a number of cases where a SPIR-V instruction can: mismatch with
 the sampler, the image view, or both, and a number of further cases where
 the sampler can: mismatch with the image view.
-In such cases the value of the texel returned is undefined:.
+In such cases the value of the texel returned is poison.
 
 These cases include:
 
@@ -420,11 +441,24 @@ ifdef::VK_COMPUTE_VERSION_1_3,VK_KHR_format_feature_flags2[]
 endif::VK_COMPUTE_VERSION_1_3,VK_KHR_format_feature_flags2[]
   * The SPIR-V instruction's image variable's properties are not compatible
     with the image view:
-  ** If the image view's pname:viewType is one of
-     ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY, ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-     or ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY then the instruction must: have
+  ** If the image view's pname:viewType is ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY
+     or ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+ifdef::VK_KHR_maintenance11[and the image was not created with ename:VK_IMAGE_CREATE_ALIAS_SINGLE_LAYER_DESCRIPTOR_BIT_KHR,]
+     then the instruction must: have code:Arrayed = 1.
+  ** If the image view's pname:viewType is ename:VK_IMAGE_VIEW_TYPE_1D or
+     ename:VK_IMAGE_VIEW_TYPE_2D,
+ifdef::VK_KHR_maintenance11[and the image was not created with ename:VK_IMAGE_CREATE_ALIAS_SINGLE_LAYER_DESCRIPTOR_BIT_KHR,]
+     the instruction must: have code:Arrayed = 0.
+ifdef::VK_KHR_maintenance11[]
+  ** If the image view's pname:viewType is ename:VK_IMAGE_VIEW_TYPE_1D_ARRAY
+     or ename:VK_IMAGE_VIEW_TYPE_2D_ARRAY and code:Arrayed = 0, the image
+     view must: have been created with a single layer.
+endif::VK_KHR_maintenance11[]
+  ** If the image view's pname:viewType is
+     ename:VK_IMAGE_VIEW_TYPE_CUBE_ARRAY then the instruction must: have
      code:Arrayed = 1.
-     Otherwise the instruction must: have code:Arrayed = 0.
+  ** If the image view's pname:viewType is ename:VK_IMAGE_VIEW_TYPE_CUBE
+     then the instruction must: have code:Arrayed = 0.
   ** If the image was created with slink:VkImageCreateInfo::pname:samples
      equal to ename:VK_SAMPLE_COUNT_1_BIT, the instruction must: have
      code:MS = 0.
@@ -1380,6 +1414,7 @@ selections for [eq]#s~c~#, [eq]#t~c~#, [eq]#r~c~#, and the selection of
 derivatives, are determined by the major axis direction as specified in the
 following two tables.
 
+[[textures-cube-map-face-and-coordinate-selection-table]]
 .Cube Map Face and Coordinate Selection
 [width="75%",frame="all",options="header"]
 |====
@@ -1392,7 +1427,7 @@ following two tables.
 | [eq]#-r~z~#          | [eq]#5#      | Negative Z    | [eq]#-r~x~# | [eq]#-r~y~# | [eq]#r~z~#
 |====
 
-
+[[textures-cube-map-derivative-selection-table]]
 .Cube Map Derivative Selection
 [width="75%",frame="all",options="header"]
 |====
@@ -2104,16 +2139,18 @@ parameters of the sampler, respectively.
 
 SPIR-V instructions with code:Gather in the name return a vector derived
 from 4 texels in the base level of the image view.
+
 The rules for the ename:VK_FILTER_LINEAR minification filter are applied to
-identify the four selected texels.
-Each texel is then converted to an RGBA value according to
-<<images-component-substitution,component substitution>> and then
-<<textures-component-swizzle,swizzled>>.
-A four-component vector is then assembled by taking the component indicated
-by the code:Component value in the instruction from the swizzled color value
-of the four texels.
-If the operation does not use the code:ConstOffsets image operand then the
-four texels form the 2 {times} 2 rectangle used for texture filtering:
+identify the four selected texels for code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[]
+, and code:OpImageGatherQCOM with modes code:GatherH2QCOM and
+code:GatherV2QCOM
+endif::VK_QCOM_image_processing3[]
+.
+
+If an code:OpImage*Gather operation does not use the code:ConstOffsets image
+operand then the four texels form the 2 {times} 2 rectangle used for texture
+filtering:
 
 [latexmath]
 ++++
@@ -2125,8 +2162,8 @@ four texels form the 2 {times} 2 rectangle used for texture filtering:
 \end{aligned}
 ++++
 
-If the operation does use the code:ConstOffsets image operand then the
-offsets allow a custom filter to be defined:
+If an code:OpImage*Gather operation uses the code:ConstOffsets image operand
+then the offsets allow a custom filter to be defined:
 
 [latexmath]
 ++++
@@ -2137,6 +2174,76 @@ offsets allow a custom filter to be defined:
 \tau[A] &= \tau_{i0j0 + \Delta_3}[level_{base}][comp]
 \end{aligned}
 ++++
+
+ifdef::VK_QCOM_image_processing3[]
+If an code:OpImageGatherQCOM operation has a code:Mode equal to
+code:GatherH2QCOM or code:GatherV2QCOM, then it uses a predefined set of
+code:ConstOffsets.
+
+The offsets used for code:GatherH2QCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (-1, 1) \\
+\Delta_1 &= (2, 1) \\
+\Delta_2 &= (2, 0) \\
+\Delta_3 &= (-1, 0)
+\end{aligned}
+++++
+
+The offsets used for code:GatherV2QCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (0, 2) \\
+\Delta_1 &= (1, 2) \\
+\Delta_2 &= (1, -1) \\
+\Delta_3 &= (0, -1)
+\end{aligned}
+++++
+
+The rules for the ename:VK_FILTER_NEAREST minification filter are applied to
+identify the origin texel [eq]#\tau_{\{ij}}# for code:OpImageGatherQCOM with
+modes equal to code:Gather4x1QCOM and code:GatherDQCOM.
+The filter used for these modes is defined as:
+
+[latexmath]
+++++
+\begin{aligned}
+\tau[R] &= \tau_{ij + \Delta_0}[level_{base}][comp] \\
+\tau[G] &= \tau_{ij + \Delta_1}[level_{base}][comp] \\
+\tau[B] &= \tau_{ij + \Delta_2}[level_{base}][comp] \\
+\tau[A] &= \tau_{ij + \Delta_3}[level_{base}][comp]
+\end{aligned}
+++++
+
+The offsets used for code:Gather4x1QCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (0, 0) \\
+\Delta_1 &= (1, 0) \\
+\Delta_2 &= (2, 0) \\
+\Delta_3 &= (3, 0)
+\end{aligned}
+++++
+
+The offsets used for code:GatherDQCOM are:
+
+[latexmath]
+++++
+\begin{aligned}
+\Delta_0 &= (0, 1) \\
+\Delta_1 &= (1, 0) \\
+\Delta_2 &= (0, -1) \\
+\Delta_3 &= (-1, 0)
+\end{aligned}
+++++
+
+endif::VK_QCOM_image_processing3[]
 
 where:
 
@@ -2154,8 +2261,14 @@ comp & \,\text{from SPIR-V operand Component}
 \end{aligned}
 ++++
 
+Each texel is then converted to an RGBA value according to
+<<images-component-substitution,component substitution>> and then
+<<textures-component-swizzle,swizzled>>.
+
 ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-code:OpImage*Gather must: not be used on a sampled image with
+code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[and code:OpImageGatherQCOM]
+must: not be used on a sampled image with
 <<samplers-YCbCr-conversion,sampler {YCbCr} conversion>> enabled.
 endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
@@ -2724,6 +2837,7 @@ groups used to evaluate the footprint.
 Each bit in the returned footprint mask corresponds to an aligned block of
 texels whose size is given by the following table:
 
+[[textures-texel-footprint-granularity-values-table]]
 .Texel Footprint Granularity Values
 [width="50%",options="header"]
 |====
@@ -2934,7 +3048,7 @@ pname:numPhases.
 described in more detail below.
 
 The code:weight input must: be bound using a
-<<descriptorsets-weightimage,sample weight image>> descriptor type.
+<<descriptors-weightimage,sample weight image>> descriptor type.
 The code:weight view defines a filtering kernel that is a region of view's
 subresource range.
 The kernel spans a region from integer texel coordinate [eq]#(0,0)# to
@@ -2943,9 +3057,6 @@ It is valid for the view's subresource to have dimensions larger than the
 kernel but the texels with integer coordinates greater than
 [eq]#(pname:filterSize.width-1, pname:filterSize.height-1)# are ignored by
 weight sampling.
-The value returned by queries code:OpImageQuerySize,
-code:OpImageQuerySizeLod, code:OpImageQueryLevels, and
-code:OpImageQuerySamples return for a weight image is undefined:.
 
 pname:filterCenter designates an integer texel coordinate within the filter
 kernel as being the 'center' of the kernel.
@@ -3128,7 +3239,6 @@ coordinate validation>>, If any coordinate fails coordinate validation, it
 is a Border Texel and <<textures-border-replacement,border replacement>> is
 performed.
 
-
 The phase index latexmath:[\psi] is computed from the fraction bits of the
 unnormalized 2D texel coordinates:
 
@@ -3186,8 +3296,9 @@ weight_{v} & = w_{l_{packed}}[1]  & \text{(vertical weights packed in layer 1)}
 
 Where latexmath:[\mathbin{\%}] refers to the integer modulo operator.
 
-The values of multiple texels, together with their weights, are combined to
-produce a filtered value.
+Each selected texel is read with the operations specified in
+<<textures-texel-reads>>, and their values are combined to produce a
+filtered value.
 
 [latexmath]
 ++++
@@ -3207,9 +3318,8 @@ If the reduction mode is ename:VK_SAMPLER_REDUCTION_MODE_MIN or
 ename:VK_SAMPLER_REDUCTION_MODE_MAX, each latexmath:[w(k,l,\psi)] weight
 must: be equal to 0.0 or 1.0, otherwise the undefined: values are returned.
 
-Finally, the operations described in <<images-component-substitution>> and
-<<textures-component-swizzle,Component swizzle>> are performed and the final
-result is returned to the shader.
+Finally, the operations described in <<textures-component-swizzle,Component
+swizzle>> are performed and the final result is returned to the shader.
 
 
 [[textures-blockmatch]]
@@ -3248,31 +3358,65 @@ endif::VK_QCOM_image_processing2[]
 [[textures-blockmatch-sampler]]
 === Block Matching Sampler Parameters
 
-For code:opImageBlockMatchSAD and code:opImageBlockMatchSSD, the input
-code:sampler must: be created with code:addressModeU and code:addressModeV,
-equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
-ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
-ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
-The input code:sampler must: be created with code:unnormalizedCoordinates
-equal to ename:VK_TRUE.
-The input code:sampler must: be created with pname:components equal to
-ename:VK_COMPONENT_SWIZZLE_IDENTITY.
+Block matching operations must: be specified with identical samplers to use
+with the _target_ and _reference_ images, which is defined as the _input_
+sampler.
 
-
+The _input_ sampler must: be created with:
+  * For code:opImageBlockMatchSAD and code:opImageBlockMatchSSD,
+    code:addressModeU and code:addressModeV equal to
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, or
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+    ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
 ifdef::VK_QCOM_image_processing2[]
-For code:opImageBlockMatchWindowSAD and code:opImageBlockMatchWindowSSD
-instructions, the code:target sampler must: have been created with
-slink:VkSamplerBlockMatchWindowCreateInfoQCOM in the code:pNext chain.
-
-For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
-code:opImageBlockMatchGatherSAD, or
-code:opImageBlockMatchGatherSSDinstructions, the input code:sampler must: be
-created with code:addressModeU and code:addressModeV, equal to
-ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
-ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK.
+  * For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
+    code:opImageBlockMatchGatherSAD, or code:opImageBlockMatchGatherSSD
+    instructions, code:addressModeU and code:addressModeV equal to
+    ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER with
+    ename:VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
+ifdef::VK_QCOM_image_processing3[]
+    , or if the
+    <<features-blockMatchExtendedClampToEdge,pname:blockMatchExtendedClampToEdge>>
+    feature is enabled, equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+  * For code:opImageBlockMatchWindowSAD, code:opImageBlockMatchWindowSSD,
+    code:opImageBlockMatchGatherSAD, or code:opImageBlockMatchGatherSSD
+    instructions, with either code:addressModeU and code:addressModeV equal
+    to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, code:addressModeU and
+    code:addressModeV equal to ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+endif::VK_QCOM_image_processing3[]
+endif::VK_QCOM_image_processing2[]
+  * pname:unnormalizedCoordinates equal to ename:VK_TRUE
+  * pname:components equal to ename:VK_COMPONENT_SWIZZLE_IDENTITY
+  * pname:minFilter equal to ename:VK_FILTER_NEAREST
+  * pname:mipmapMode equal to ename:VK_SAMPLER_MIPMAP_MODE_NEAREST
+  * pname:minLod and pname:maxLod equal to `0`
+  * pname:anisotropyEnable equal to ename:VK_FALSE
+  * pname:compareEnable equal to ename:VK_FALSE
+ifdef::VK_QCOM_image_processing2[]
+  * For code:opImageBlockMatchWindowSAD and code:opImageBlockMatchWindowSSD
+    instructions, slink:VkSamplerBlockMatchWindowCreateInfoQCOM must: be
+    included in the code:pNext chain.
 endif::VK_QCOM_image_processing2[]
 
 Other sampler states are ignored.
+
+[NOTE]
+====
+_Reference_ image does not support wrap modes and the coordinates must:
+remain inside the image.
+Application must: specify wrap modes in the sampler object because it must:
+be identical with the _target_ image's sampler object, which does support
+wrap modes.
+====
+
+The _target_ and _reference_ images must: be created with:
+  * pname:imageType equal to ename:VK_IMAGE_TYPE_2D
+  * pname:mipLevels equal to `1`
+  * pname:arrayLayers equal to `1`
+  * pname:samples equal to ename:VK_SAMPLE_COUNT_1_BIT
+  * pname:format equal to a compatible <<descriptors-blockmatch,block
+    matching format>>
+  * pname:usage equal to `VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM`
 
 
 [[textures-blockmatch-filteroperation]]
@@ -3331,16 +3475,32 @@ coordinates are generated.
 \end{aligned}
 ++++
 
-Each reference texel coordinate latexmath:[(k,l)] in the set must: not fail
+ifdef::VK_QCOM_image_processing3[]
+If the
+<<features-blockMatchExtendedClampToEdge,pname:blockMatchExtendedClampToEdge>>
+feature is enabled, and the _input_ sampler was created with
+pname:addressModeU and pname:addressModeV equal to
+ename:VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, then any reference texel
+coordinate latexmath:[(k,l)] in the set that fails
 <<textures-integer-coordinate-validation,integer texel coordinate
-validation>>.
-To avoid undefined: behavior, application shader should guarantee that the
+validation>> is an invalid texel and <<textures-border-replacement,border
+replacement>> is performed.
+Otherwise, each
+endif::VK_QCOM_image_processing3[]
+ifndef::VK_QCOM_image_processing3[Each]
+reference texel coordinate latexmath:[(k,l)] in the set must: not fail
+integer texel coordinate validation.
+To avoid undefined: behavior, application shader must: guarantee that the
 reference block is fully within the bounds of the reference image.
 
 Each pair of texel coordinates latexmath:[(i,j)] in the set selects a single
-texel value from the target image latexmath:[\tau_{ij}].
+texel from the target image latexmath:[\tau_{ij}].
 Each pair of texel coordinates latexmath:[(k,l)] in the set selects a single
-texel value from the reference image latexmath:[\upsilon_{kl}].
+texel from the reference image latexmath:[\upsilon_{kl}].
+
+Each selected texel is read with the operations specified in
+<<textures-texel-reads>>, without performing
+<<images-component-substitution>>.
 
 The difference between target and reference texel values is summed to
 compute a difference metric.
@@ -3675,10 +3835,9 @@ Each step described in this chapter is performed by a subset of the image
 instructions:
 
   * Texel Input Validation Operations, Format Conversion, Texel Replacement,
-    Conversion to RGBA, and Component Swizzle: Performed by all instructions
-    except code:OpImageWrite.
+    Conversion to RGBA, and Component Swizzle: Performed by all sampling
+    instructions.
   * Depth Comparison: Performed by code:OpImage*Dref instructions.
-  * All Texel output operations: Performed by code:OpImageWrite.
   * Projection: Performed by all code:OpImage*Proj instructions.
   * Derivative Image Operations, Cube Map Operations, Scale Factor
     Operation, LOD Operation and Image Level(s) Selection, and Texel
@@ -3686,9 +3845,12 @@ instructions:
     code:OpImageSparseSample* instructions.
   * (s,t,r,q,a) to (u,v,w,a) Transformation, Wrapping, and (u,v,w,a) to
     (i,j,k,l,n) Transformation And Array Layer Selection: Performed by all
-    code:OpImageSample, code:OpImageSparseSample, and code:OpImage*Gather
+    code:OpImageSample, code:OpImageSparseSample,
+ifdef::VK_QCOM_image_processing3[code:OpImageGatherQCOM,]
+    and code:OpImage*Gather instructions.
+  * Texel Gathering: Performed by code:OpImage*Gather
+ifdef::VK_QCOM_image_processing3[and code:OpImageGatherQCOM]
     instructions.
-  * Texel Gathering: Performed by code:OpImage*Gather instructions.
 ifdef::VK_NV_shader_image_footprint[]
   * Texel Footprint Evaluation: Performed by code:OpImageSampleFootprint
     instructions.
@@ -3706,30 +3868,11 @@ ifdef::VK_QCOM_image_processing[]
 endif::VK_QCOM_image_processing[]
 
 
-[[textures-queries]]
-== Image Query Instructions
+[[textures-lod-query]]
+== LOD Query
 
-
-=== Image Property Queries
-
-code:OpImageQuerySize, code:OpImageQuerySizeLod, code:OpImageQueryLevels,
-and code:OpImageQuerySamples query properties of the image descriptor that
-would be accessed by a shader image operation.
-ifdef::VK_EXT_robustness2,VK_KHR_robustness2[]
-They return 0 if the bound descriptor is a null descriptor.
-endif::VK_EXT_robustness2,VK_KHR_robustness2[]
-
-code:OpImageQuerySizeLod returns the size of the image level identified by
-the code:Level code:of code:Detail operand.
-If that level does not exist in the image,
-ifdef::VK_EXT_robustness2,VK_KHR_robustness2[and the descriptor is not null,]
-then the value returned is undefined:.
-
-
-=== LOD Query
-
-code:OpImageQueryLod returns the LOD parameters that would be used in an
-image operation with the given image and coordinates.
+code:OpImageQueryLod returns the LOD parameters that would be used in a
+sampling instruction with the given image and coordinates.
 ifdef::VK_EXT_robustness2,VK_KHR_robustness2[]
 If the descriptor that would be accessed is a null descriptor then
 [eq]#(0,0)# is returned.
@@ -3741,3 +3884,8 @@ code:OpImageSampleImplicitLod, up to <<textures-lod-and-scale-factor>>.
 The return value is the vector [eq]#({lambda}', d~l~ - level~base~)#.
 These values may: be subject to implementation-specific maxima and minima
 for very large, out-of-range values.
+
+ifdef::VK_QCOM_image_processing[]
+If the image is a <<textures-weightimage,weight image>>, the value returned
+by code:OpImageQueryLod is undefined:.
+endif::VK_QCOM_image_processing[]

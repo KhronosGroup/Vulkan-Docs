@@ -13,6 +13,13 @@ $apiNames = APInames.new
 class SpecInlineMacroBase < Extensions::InlineMacroProcessor
     use_dsl
     using_format :short
+
+    # Workaround to report correct line number even if the error being
+    # logged is in the last block of an included file - see
+    #   https://github.com/asciidoctor/asciidoctor/issues/3966
+    Asciidoctor::Compliance.underline_style_section_titles = false
+
+    include Asciidoctor::Logging
 end
 
 class NormativeInlineMacroBase < SpecInlineMacroBase
@@ -50,15 +57,27 @@ class LinkInlineMacroBase < SpecInlineMacroBase
           oldxref = linkxref
           linkxref = $apiNames.nonexistent[oldxref]
           msg = 'Rewriting nonexistent link macro target: ' + @name.to_s + ':' + linkname + ' to ' + linkxref
-          Asciidoctor::LoggerManager.logger.info msg
+          logger.info msg
           # Fall through
         else
           # Suppress warnings for apiext: macros as this is such a common case
           if @name.to_s != 'apiext'
-            msg = 'Textifying unknown link macro target: ' + @name.to_s + ':' + linkxref
-            Asciidoctor::LoggerManager.logger.warn msg
+            line_info = parent.document.reader.cursor.line_info
+            msg = "Unknown link macro target #{@name.to_s}:#{linkxref} - there may be incorrect or missing asciidoc conditionals around this macro"
+
+            if parent.document.attributes['spec_macro_target_warning']
+                logger.warn "#{logger.progname}" do
+                  message_with_context msg, source_location: parent.source_location
+                end
+            else
+                logger.error "#{logger.progname}" do
+                  message_with_context msg, source_location: parent.source_location
+                end
+            end
+            return create_inline parent, :quoted, '?? <code>' + linkxref + '</code>'
+          else
+            return create_inline parent, :quoted, '<code>' + linkxref + '</code>'
           end
-          return create_inline parent, :quoted, '<code>' + linkxref + '</code>'
         end
       end
 
@@ -76,7 +95,7 @@ class CodeInlineMacroBase < SpecInlineMacroBase
         oldtarget = target
         target = $apiNames.nonexistent[oldtarget]
         msg = 'Rewriting nonexistent name macro target: ' + @name.to_s + ':' + oldtarget + ' to ' + target
-        Asciidoctor::LoggerManager.logger.info msg
+        logger.info msg
       end
       create_inline parent, :quoted, '<code>' + target.gsub('&#8594;', '-&gt;') + '</code>'
     end

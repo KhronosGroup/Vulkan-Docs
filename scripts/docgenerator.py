@@ -228,7 +228,46 @@ class DocOutputGenerator(OutputGenerator):
             # No API dictionary available, return nothing
             return ''
 
-    def writeInclude(self, directory, basename, contents, deprecatedby, deprecatedlink):
+    # Determine whether an API should be deprecated based on whether it is
+    # vendor/core/EXT/KHR and whether the thing deprecating it is
+    # vendor/core/EXT/KHR.
+    # If an extension/version is at least as or more promoted than the API, a
+    # deprecation warning is required, and this function returns a list of
+    # those extensions/versions
+    def deprecatedBy(self, eleminfo):
+        deprecators = []
+
+        # Versions doing the deprecating are automatically added to the list
+        if eleminfo.deprecatedbyversion:
+            deprecators.append(eleminfo.deprecatedbyversion)
+
+        # Ordering for "how promoted" something is.
+        # 'None' indicates core functionality.
+        def getLevel(vendor):
+            if vendor == None:
+                return 0
+            elif vendor == "KHR":
+                return 1
+            elif vendor == "EXT":
+                return 2
+            else:
+                return 3
+
+        # Extensions are conditionally added to the list based on their
+        # promotion level
+        if eleminfo.deprecatedbyextensions:
+            elemlevel = getLevel(eleminfo.vendor)
+
+            # Loop through each extension and split off its vendor tag to get
+            # the level, then compare
+            for extension in eleminfo.deprecatedbyextensions:
+                extlevel = getLevel(conventions.extension_name_split(extension)[0])
+                if extlevel <= elemlevel:
+                    deprecators.append(extension)
+
+        return deprecators
+
+    def writeInclude(self, directory, basename, contents, deprecatedby, deprecatedlink, supersededby):
         """Generate an include file.
 
         - directory - subdirectory to put file in
@@ -262,9 +301,29 @@ class DocOutputGenerator(OutputGenerator):
         source_language = self.conventions.docgen_language
         source_directive = f'[source{source_options},{source_language}]'
 
-        # Only output deprecation warnings for versions, for now
+        # Output any deprecation warnings needed
         if deprecatedby:
-            write("WARNING: This functionality is superseded by " + conventions.formatVersionOrExtension(deprecatedby) + ". See <<" + deprecatedlink + ", Legacy Functionality>> for more information.", file=fp);
+
+            deprecators = None
+
+            # Use the supersededby attribute if present
+            if supersededby:
+                deprecators = '<<' + supersededby + ',' + supersededby + '>>'
+            # Otherwise, format the list of deprecating versions/extensions
+            else:
+                # Format the list of deprecators
+                deprecatedby_formatted = []
+                for feature in deprecatedby:
+                    deprecatedby_formatted.append(conventions.formatVersionOrExtension(feature))
+
+                # Join the list of deprecators so they make sense in prose
+                deprecators = deprecatedby_formatted[0]
+                if len(deprecatedby_formatted) == 2:
+                    deprecators = deprecatedby_formatted[0] + " and " + deprecatedby_formatted[1]
+                elif len(deprecatedby_formatted) > 2:
+                    deprecators = ", ".join(deprecatedby_formatted[:-1]) + ", and " + deprecatedby_formatted[-1]
+
+            write("WARNING: This functionality is superseded by " + deprecators + ". See <<" + deprecatedlink + ", Legacy Functionality>> for more information.", file=fp);
             write('', file=fp);
 
         write(source_directive, file=fp)
@@ -365,7 +424,7 @@ class DocOutputGenerator(OutputGenerator):
                 body += f'// Equivalent to {alias}\n'
                 body += f"typedef {alias} {name};\n"
                 self.writeInclude(OutputGenerator.categoryToPath[category],
-                                  name, body, None, None)
+                                  name, body, None, None, None)
                 return
             elif category == 'funcpointer':
                 # Only include the typedef
@@ -385,8 +444,9 @@ class DocOutputGenerator(OutputGenerator):
             if body:
                 self.writeInclude(OutputGenerator.categoryToPath[category],
                                   name, body + '\n',
-                                  typeinfo.deprecatedbyversion,
-                                  typeinfo.deprecatedlink)
+                                  self.deprecatedBy(typeinfo),
+                                  typeinfo.deprecatedlink,
+                                  typeinfo.supersededby)
             else:
                 self.logMsg('diag', 'NOT writing empty include file for type', name)
 
@@ -413,6 +473,7 @@ class DocOutputGenerator(OutputGenerator):
 
         deprecatedby = None
         deprecatedlink = None
+        supersededby = None
         body = self.deprecationComment(typeinfo.elem)
         body += self.genRequirements(typeName)
         if alias:
@@ -426,10 +487,11 @@ class DocOutputGenerator(OutputGenerator):
             body += f"typedef {alias} {typeName};\n"
         else:
             body += self.genStructBody(typeinfo, typeName)
-            deprecatedby = typeinfo.deprecatedbyversion
+            deprecatedby = self.deprecatedBy(typeinfo)
             deprecatedlink = typeinfo.deprecatedlink
+            supersededby = typeinfo.supersededby
 
-        self.writeInclude('structs', typeName, body, deprecatedby, deprecatedlink)
+        self.writeInclude('structs', typeName, body, deprecatedby, deprecatedlink, supersededby)
 
     def genEnumTable(self, groupinfo, groupName):
         """Generate tables of enumerant values and short descriptions from
@@ -509,6 +571,7 @@ class DocOutputGenerator(OutputGenerator):
 
         deprecatedby = None
         deprecatedlink = None
+        supersededby = None
         body = self.genRequirements(groupName)
         if alias:
             # If the group name is aliased, just emit a typedef declaration
@@ -521,10 +584,11 @@ class DocOutputGenerator(OutputGenerator):
             body += enumbody
             if self.genOpts.conventions.generate_enum_table:
                 self.genEnumTable(groupinfo, groupName)
-            deprecatedby = groupinfo.deprecatedbyversion
+            deprecatedby = self.deprecatedBy(groupinfo)
             deprecatedlink = groupinfo.deprecatedlink
+            supersededby = groupinfo.supersededby
 
-        self.writeInclude('enums', groupName, body, deprecatedby, deprecatedlink)
+        self.writeInclude('enums', groupName, body, deprecatedby, deprecatedlink, supersededby)
 
     def genEnum(self, enuminfo, name, alias):
         """Generate the C declaration for a constant (a single <enum> value)."""
@@ -534,7 +598,7 @@ class DocOutputGenerator(OutputGenerator):
         body = self.deprecationComment(enuminfo.elem)
         body += self.buildConstantCDecl(enuminfo, name, alias)
 
-        self.writeInclude('enums', name, body, enuminfo.deprecatedbyversion, enuminfo.deprecatedlink)
+        self.writeInclude('enums', name, body, self.deprecatedBy(enuminfo), enuminfo.deprecatedlink, enuminfo.supersededby)
 
     def genCmd(self, cmdinfo, name, alias):
         "Generate command."
@@ -545,4 +609,4 @@ class DocOutputGenerator(OutputGenerator):
             body += f'// Equivalent to {alias}\n'
         decls = self.makeCDecls(cmdinfo.elem)
         body += decls[0]
-        self.writeInclude('protos', name, body, cmdinfo.deprecatedbyversion, cmdinfo.deprecatedlink)
+        self.writeInclude('protos', name, body, self.deprecatedBy(cmdinfo), cmdinfo.deprecatedlink, cmdinfo.supersededby)

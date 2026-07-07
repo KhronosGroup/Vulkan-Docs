@@ -1,7 +1,5 @@
 #!/usr/bin/env python3 -i
-#
 # Copyright 2013-2026 The Khronos Group Inc.
-#
 # SPDX-License-Identifier: Apache-2.0
 
 # Base class for working-group-specific style conventions,
@@ -552,7 +550,7 @@ class ConventionsBase(abc.ABC):
         """Return the language to be used in docgenerator [source]
            blocks."""
 
-        return 'c++'
+        return 'c'
 
     @property
     def docgen_source_options(self):

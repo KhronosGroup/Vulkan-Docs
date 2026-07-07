@@ -36,6 +36,7 @@ ifdef::VK_GRAPHICS_VERSION_1_0[  ** fixed-function stage of the pipeline,]
 ifdef::VK_COMPUTE_VERSION_1_0[  ** shader invocation, or]
   ** host thread.
 
+
 [[memory-model-memory-location]]
 == Memory Location
 
@@ -75,16 +76,24 @@ endif::VK_KHR_workgroup_memory_explicit_layout[]
 [[memory-model-allocation]]
 == Allocation
 
-The values stored in newly allocated memory locations are
-ifdef::VK_COMPUTE_VERSION_1_0[]
-determined by a SPIR-V variable's initializer, if present, or else are
-endif::VK_COMPUTE_VERSION_1_0[]
+
+The values stored in memory locations newly allocated by the API are
+ifdef::VK_EXT_zero_initialize_device_memory[]
+set to 0 if allocated with the
+ename:VK_MEMORY_ALLOCATE_ZERO_INITIALIZE_BIT_EXT flag, otherwise they are
+endif::VK_EXT_zero_initialize_device_memory[]
 undefined:.
+ifdef::VK_COMPUTE_VERSION_1_0[]
+For SPIR-V variables, the values are determined according to the
+<<spirv-spec,SPIR-V specification>>.
+endif::VK_COMPUTE_VERSION_1_0[]
+
 At the time an allocation is created there have been no
 <<memory-model-memory-operation,memory operations>> to any of its memory
 locations.
 ifdef::VK_COMPUTE_VERSION_1_0[]
-The initialization is not considered to be a memory operation.
+Using an initializer for a SPIR-V variable is not considered to be a memory
+operation.
 endif::VK_COMPUTE_VERSION_1_0[]
 
 ifdef::VK_GRAPHICS_VERSION_1_0[]
@@ -250,6 +259,7 @@ The various scopes are described in detail in <<shaders-scope, the Shaders
 chapter>>.
 endif::VK_COMPUTE_VERSION_1_0[]
 
+
 [[memory-model-atomic-operation]]
 == Atomic Operation
 
@@ -344,7 +354,11 @@ Host instructions that include semantics are some std::atomic methods and
 memory fences.
 ifdef::VK_COMPUTE_VERSION_1_0[]
 Device instructions that include semantics are code:OpAtomic*,
-code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier.
+code:OpControlBarrier,
+ifdef::VK_EXT_shader_split_barrier[]
+code:OpControlBarrierArriveEXT, code:OpControlBarrierWaitEXT,
+endif::VK_EXT_shader_split_barrier[]
+code:OpMemoryBarrier, and code:OpMemoryNamedBarrier.
 
 Vulkan supports the following memory semantics:
 
@@ -485,8 +499,16 @@ all of the following are true:
     headed by A
 
 ifdef::VK_COMPUTE_VERSION_1_0[]
-code:OpControlBarrier, code:OpMemoryBarrier, and code:OpMemoryNamedBarrier
-are _memory barrier_ instructions in SPIR-V.
+code:OpControlBarrier,
+ifdef::VK_EXT_shader_split_barrier[]
+code:OpControlBarrierArriveEXT, code:OpControlBarrierWaitEXT,
+endif::VK_EXT_shader_split_barrier[]
+code:OpMemoryBarrier, and code:OpMemoryNamedBarrier are _memory barrier_
+instructions in SPIR-V.
+ifdef::VK_EXT_shader_split_barrier[]
+code:OpControlBarrierArriveEXT is a _control barrier arrival_ and
+code:OpControlBarrierWaitEXT is a _control barrier wait_.
+endif::VK_EXT_shader_split_barrier[]
 endif::VK_COMPUTE_VERSION_1_0[]
 
 If A is a release barrier and B is an atomic operation that performs an
@@ -546,6 +568,18 @@ B if all of the following are true:
 This is similar to the barrier-barrier synchronization above, but with a
 control barrier filling the role of the relaxed atomics.
 ====
+
+ifdef::VK_EXT_shader_split_barrier[]
+If A is a release barrier, B is an acquire barrier, C is a control barrier
+arrival, and D is a control barrier wait (where A can: equal C, and B can:
+equal D), then A synchronizes-with B if all of the following are true:
+
+  * A is program-ordered before (or equals) C
+  * D is program-ordered before (or equals) B
+  * C and D have the same execution scope
+  * A and B are in the instance of each other's memory scopes
+  * A and B are in the instance of C's execution scope
+endif::VK_EXT_shader_split_barrier[]
 
 ifdef::VK_EXT_fragment_shader_interlock[]
 

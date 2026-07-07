@@ -397,6 +397,27 @@ class DocFile:
 
             self.lines[lineno] = line
 
+    def rewriteProposalXrefs(self):
+        """Rewrite proposal file xrefs (to HTML refpages and specs) into
+           Antora xrefs (to .adoc files within the docs site)."""
+
+        for lineno in range(0, len(self.lines)):
+            line = self.lines[lineno]
+
+            # xref:{refpages}apiname.html -> xref:refpages:refpages:source/apiname.adoc
+            (line, count) = re.subn(r'xref:{refpages}([^ []+)\.html',
+                                    r'xref:refpages:refpages:source/\1.adoc',
+                                    line)
+
+            # xref:{docs}path/to/file.html[#anchor]\[ ->
+            #  xref:spec:ROOT:path/to/file.adoc[#anchor]\[
+            (line, count) = re.subn(r'xref:{docs}([^ [#]+)\.html',
+                                    r'xref:spec:ROOT:\1.adoc',
+                                    line)
+
+            self.lines[lineno] = line
+
+
     def __str__(self):
         lines = [
             f'Input file {filename}: {len(self.lines)} lines',
@@ -424,9 +445,14 @@ class DocFile:
                 raise RuntimeError(f'Will not overwrite {text}: {path}')
 
         dir = os.path.dirname(path)
-        if not os.path.exists(dir):
-            # print(f'Creating {text} directory {dir}')
-            os.makedirs(dir)
+        # This used to only create the directory if os.path.exists(dir)
+        # failed, but this seemed to encounter race conditions with
+        # os.makedirs(dir) FileExistsError exceptions, even though there is
+        # no apparent parallelism that might cause it.
+        # Instead, call makedirs with exist_ok=True.
+
+        # print(f'Creating {text} directory {dir}')
+        os.makedirs(dir, exist_ok=True)
 
     def rewriteFile(self, overwrite = True, pageHeaders = None):
         """Write source file to component directory. Images are just symlinked
@@ -496,7 +522,11 @@ def testHarness():
         '<<ext,ext chapter>> <<ext-label,',
         'ext chapter/label>>',
         '<<core>>, <<core-label, core chapter/label',
-        '>>'
+        '>>',
+        '# Proposal-type xrefs',
+        'xref:{refpages}VkDisplay.html[VkDisplay]',
+        'xref:{docs}chapters/introduction.html[introduction]',
+        'xref:{docs}chapters/introduction.html#data-format[data-format]',
     ]
 
     pageMap = {
@@ -513,6 +543,7 @@ def testHarness():
     printFile('Original File', docFile.lines)
 
     docFile.rewriteXrefs(pageMap, xrefMap, 'module:')
+    docFile.rewriteProposalXrefs()
 
     printFile('Edited File', docFile.lines)
 
@@ -548,6 +579,8 @@ if __name__ == '__main__':
                         help='Specify file containing a list of filenames to convert, one/line')
     parser.add_argument('files', metavar='filename', nargs='*',
                         help='Specify name of a single file to convert')
+    parser.add_argument('-test', action='store_true',
+                        help='Run simple test harness instead of converting targets')
     parser.add_argument('-verbose', action='store_true',
                         help='Print warnings about unresolved anchors and missing anchor titles')
 
@@ -559,7 +592,7 @@ if __name__ == '__main__':
     if args.pageHeaders is not None:
         args.pageHeaders, _ = loadFile(args.pageHeaders)
 
-    if False:
+    if args.test:
         testHarness()
         sys.exit(0)
 
@@ -622,6 +655,14 @@ if __name__ == '__main__':
             # defined at document build time.
             # Defaults to the empty string.
             docFile.rewriteXrefs(pageMap, xrefMap, args.module)
+
+            # Look for xref-style anchors matching specific patterns used
+            # in the Vulkan spec proposal documents and rewrite them to
+            # internal xrefs within the Vulkan docs site.
+            # This is specific to the proposals and could be enabled by a
+            # command-line option but is unlikely to match anything else the
+            # script is used for.
+            docFile.rewriteProposalXrefs()
 
         # Copy (possibly rewritten) file into the target path
         docFile.rewriteFile(overwrite = True, pageHeaders = args.pageHeaders)

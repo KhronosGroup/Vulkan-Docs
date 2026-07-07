@@ -13,7 +13,7 @@ import xml.etree.ElementTree as etree
 from pathlib import Path
 from apiconventions import APIConventions
 
-# Mask types which have corresponding 64-bit versions.
+# 32-bit mask types which have corresponding 64-bit versions.
 # This is not tagged in the XML yet, and requires gymnastics to infer.
 PROMOTED_MASK_TYPES = set((
     'VkAccessFlagBits',
@@ -21,6 +21,12 @@ PROMOTED_MASK_TYPES = set((
     'VkFormatFeatureFlagBits',
     'VkPipelineCreateFlagBits',
     'VkBufferUsageFlagBits',
+))
+
+# 64-bit mask types which already have a corresponding additional 64-bit
+# mask type.
+EXTENDED_MASK_TYPES = set((
+    'VkAccessFlagBits2',
 ))
 
 class MaskInfo:
@@ -153,4 +159,6 @@ if __name__ == '__main__':
 
             if name in PROMOTED_MASK_TYPES:
                 print(f'    NOTE: {name} is a legacy 32-bit mask with a corresponding 64-bit type')
+            if name in EXTENDED_MASK_TYPES:
+                print(f'    NOTE: {name} is a 64-bit mask which has a corresponding additional 64-bit type to define additional bits in')
 

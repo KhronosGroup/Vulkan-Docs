@@ -1,0 +1,150 @@
+// Copyright 2026 The Khronos Group Inc.
+//
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_QCOM_shader_multiple_wait_queues
+:toc: left
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:spirvextensions: https://github.com/KhronosGroup/SPIRV-Registry/tree/main/extensions
+:glslextensions: https://github.com/KhronosGroup/GLSL/tree/main/extensions
+:sectnums:
+
+
+This document proposes a new extension that exposes deep asynchronous
+data load queues in shaders.
+
+== Problem Statement
+
+High-performance compute and graphics shaders are frequently bound by memory latency.
+
+Traditional compiler optimizations, such as instruction scheduling and loop unrolling,
+are the standard methods for hiding memory latency by overlapping the gaps with
+arithmetic instructions. By unrolling a loop, a compiler can issue memory loads for future iterations
+`(N+1, N+2)` while the ALUs process the current iteration `(N)`.
+
+However, these techniques may not be sufficient to fully hide the latency
+for all workloads. Taking one example, xref:{refpages}VK_KHR_cooperative_matrix.html[Cooperative Matrix]:
+
+  * *Register Pressure* +
+      Cooperative matrix operations may consume significant register resources. Unrolling loops
+      to a depth sufficient to hide load latency can drastically increase the live register count, which
+      can lead to reduced performance if the register pressure becomes too great.
+  * *Monolithic Instructions* +
+      Cooperative matrix operations are coarse-grained, monolithic arithmetic instructions
+      that may utilize dedicated hardware to process. Fine-grain instruction scheduling may not be possible for the
+      implementation.
+
+A new mechanism is needed to deepen the data fetch pipeline for such workloads.
+
+== Solution Space
+
+Two primary approaches were considered:
+
+  1. *Implicit Compiler Optimization* +
+       Ideally, the compiler would detect the loop structure and automatically deepen the data fetch pipeline. However, this may not always result in optimal performance for all possible loop structures.
+  2. *Explicit Loop Control* +
+       By explicitly tagging a loop with a hint, the application can fine tune the performance by influencing the compiler's decisions.
+
+The latter solution is a more robust solution for more use cases. Application developers should
+sweep the loop control hint to determine the optimal value for the device, especially when using
+cooperative matrix operations.
+
+== Proposal
+
+The extension exposes support a new loop control hint with
+link:{spirvextensions}QCOM/SPV_QCOM_multiple_wait_queues.html[SPV_QCOM_multiple_wait_queues].
+
+=== SPIR-V
+
+[cols="1,23,7",options="header",width = "100%"]
+|====
+2+^| *Loop Control* ^| *Enabling Capabilities*
+| 0x4000000 | *MultipleWaitQueuesQCOM* +
+A hint that the compiler may take advantage of multiple wait queues to optimize a loop
+if a target supports them. Up to how many wait queues the compiler may use
+is specified in a subsequent unsigned 32-bit integer literal operand.
+The max queue count of 0 means the compiler may use all of the available wait queues.
+| *MultipleWaitQueuesQCOM*
+|====
+
+This functionality is gated behind a new SPIR-V capability:
+
+[options="header"]
+|====
+2+^| Capability ^| Implicitly declares
+| 4539 | *MultipleWaitQueuesQCOM* +
+To provide a compiler hint that the compiler may take advantage of multiple wait queues
+to optimize a loop if a target supports them. |
+|====
+
+=== High Level Language Exposure
+
+The following summarizes how the loop control hint is exposed in GLSL (requires
+link:{glslextensions}EXT/GL_EXT_control_flow_attributes.txt[GL_EXT_control_flow_attributes]):
+[source,c]
+----
+       Attribute                     | Relevant on | Intent
+      -------------------------------+-------------+------------------------------------
+       *multiple_wait_queuesQCOM*    | Loop        | compiler may optimize the loop using multiple wait queues
+       *multiple_wait_queuesQCOM(N)* | Loop        | compiler may optimize the loop using at most *N* multiple wait queues
+----
+
+=== Features and Properties
+
+A new feature is added with this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderMultipleWaitQueuesFeaturesQCOM {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           shaderMultipleWaitQueues;
+} VkPhysicalDeviceShaderMultipleWaitQueuesFeaturesQCOM;
+----
+
+  * `shaderMultipleWaitQueues` indicates that the implementation supports SPIR-V modules
+    declaring the `MultipleWaitQueuesQCOM` capability.
+
+A new limit is exposed with this extension:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceShaderMultipleWaitQueuesPropertiesQCOM {
+    VkStructureType    sType;
+    void*              pNext;
+    uint32_t           maxShaderWaitQueues;
+} VkPhysicalDeviceShaderMultipleWaitQueuesPropertiesQCOM;
+----
+
+  * `maxShaderWaitQueues` is the maximum number of wait queues that can be
+    set for a `MultipleWaitQueuesQCOM` loop control hint.
+
+== Examples
+
+GLSL:
+
+[source,glsl]
+----
+    [[multiple_wait_queuesQCOM(2)]]
+    for (step = 0; step < TOTAL_K; step += TILE_K) {
+        uint subMatrixAStart = row * STRIDE_A + step;
+        uint subMatrixBStart = col * STRIDE_B + step;
+
+        coopMatLoad(matA, inputA.x, subMatrixAStart, STRIDE_A, gl_CooperativeMatrixLayoutRowMajor); // Global to CoopMat
+        coopMatLoad(matB, inputB.x, subMatrixBStart, STRIDE_B, gl_CooperativeMatrixLayoutColumnMajor); // Global to CoopMat
+
+        matC = coopMatMulAdd(matA, matB, matC);
+
+    }
+----
+
+SPIR-V:
+
+[source,spirv]
+----
+         %76 = OpLabel
+               OpLoopMerge %78 %79 MultipleWaitQueuesQCOM 2
+               OpBranch %80
+         %80 = OpLabel
+         %81 = OpLoad %uint %step
+----

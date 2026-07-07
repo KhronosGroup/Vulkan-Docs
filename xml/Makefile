@@ -72,6 +72,7 @@ PLATFORM_HEADERS = \
     $(VULKAN)/vulkan_macos.h \
     $(VULKAN)/vulkan_vi.h \
     $(VULKAN)/vulkan_wayland.h \
+    $(VULKAN)/vulkan_ubm.h \
     $(VULKAN)/vulkan_win32.h \
     $(VULKAN)/vulkan_xcb.h \
     $(VULKAN)/vulkan_xlib.h \
