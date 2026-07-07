@@ -151,7 +151,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 353
+PATCHVERSION = 356
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -333,33 +333,10 @@ $(KATEXINSTDIR): $(KATEXSRCDIR)
 # There is some complexity to try and avoid short virtual targets like 'html'
 # causing specs to *always* be regenerated.
 
-CHUNKER = $(SCRIPTS)/asciidoctor-chunker/asciidoctor-chunker.js
-CHUNKINDEX = $(CONFIGS)/chunkindex
-# Only the $(CHUNKER) step is required unless the search index is to be
-# generated and incorporated into the chunked spec.
-#
-# Dropped $(QUIET) for now
-# Should set NODE_PATH=/usr/local/lib/node_modules or wherever, outside Makefile
-# Copying chunked.js into target avoids a warning from the chunker
-chunked: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
-	$(QUIET)$(CHUNKINDEX)/addscripts.sh $(HTMLDIR)/vkspec.html $(HTMLDIR)/prechunked.html
-	$(QUIET)$(CP) $(CHUNKINDEX)/chunked.css $(CHUNKINDEX)/chunked.js \
-	    $(CHUNKINDEX)/lunr.js $(HTMLDIR)
-	$(QUIET)$(NODEJS) $(CHUNKER) $(HTMLDIR)/prechunked.html -o $(HTMLDIR)
-	$(QUIET)$(RM) $(HTMLDIR)/prechunked.html
-	$(QUIET)$(RUBY) $(CHUNKINDEX)/generate-index.rb $(HTMLDIR)/chap*html | \
-	    $(NODEJS) $(CHUNKINDEX)/build-index.js > $(HTMLDIR)/search.index.js
-
-# This is a temporary target while the new chunker is pre-release.
-# Eventually we will either pull the chunker into CI, or permanently
-# store a copy of the short JavaScript chunker in this repository.
-CHUNKERVERSION = asciidoctor-chunker_v1.0.0
-CHUNKURL = https://github.com/wshito/asciidoctor-chunker/releases/download/v1.0.0/$(CHUNKERVERSION).zip
-getchunker:
-	wget $(CHUNKURL) -O $(CHUNKERVERSION).zip
-	unzip $(CHUNKERVERSION).zip
-	mv $(CHUNKERVERSION)/* scripts/asciidoctor-chunker/
-	$(RMRF) $(CHUNKERVERSION).zip $(CHUNKERVERSION)
+chunked:
+	$(QUIET)echo "The 'chunked' target is no longer supported as of the 1.4.355 spec update."
+	$(QUIET)echo "Please use https://docs.vulkan.org instead."
+	$(QUIET)false
 
 html: $(HTMLDIR)/vkspec.html $(SPECSRC) $(COMMONDOCS)
 
