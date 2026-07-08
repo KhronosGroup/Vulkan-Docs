@@ -1149,7 +1149,7 @@ class OutputGenerator:
 
         return f'({self.genOpts.apientryp}{prefix}{name}{tail})'
 
-    def makeCParamDecl(self, param, aligncol):
+    def makeCParamDecl(self, param, aligncol, structname=None):
         """Return a string which is an indented, formatted
         declaration for a `<param>` or `<member>` block (e.g. function parameter
         or structure/union member).
@@ -1194,7 +1194,7 @@ class OutputGenerator:
             if elem.tag == 'name':
                 if elem.text == 'sType' and param.attrib.get('values') != None:
                     paramdecl += ' VK_CPP11_DEFAULT(' + param.attrib['values'] + ')'
-                elif elem.text == 'pNext':
+                elif elem.text == 'pNext' and structname not in ('VkBaseInStructure', 'VkBaseOutStructure'):
                     paramdecl += ' VK_CPP11_DEFAULT(nullptr)'
                 elif param.attrib.get('default') != None:
                     paramdecl += ' VK_CPP11_DEFAULT(' + param.attrib['default'] + ')'
