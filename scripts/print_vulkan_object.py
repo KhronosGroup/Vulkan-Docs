@@ -62,21 +62,28 @@ class MyGenerator(BaseGenerator):
         BaseGenerator.__init__(self)
 
     def generate(self):
-        # Sort things here to ensure moving things around the XML do not change things
-        self.vk.extensions = sorted(self.vk.extensions)
-        self.vk.versions = sorted(self.vk.versions)
-        self.vk.handles = sorted(self.vk.handles)
-        self.vk.commands = sorted(self.vk.commands)
-        self.vk.structs = sorted(self.vk.structs)
-        self.vk.enums = sorted(self.vk.enums)
-        self.vk.bitmasks = sorted(self.vk.bitmasks)
-        self.vk.flags = sorted(self.vk.flags)
-        self.vk.constants = sorted(self.vk.constants)
-        self.vk.formats = sorted(self.vk.formats)
-        self.vk.funcPointers = sorted(self.vk.funcPointers)
-        self.vk.aliasTypeRequirements = sorted(self.vk.aliasTypeRequirements)
-        self.vk.aliasFieldRequirements = sorted(self.vk.aliasFieldRequirements)
-        self.vk.aliasFlagRequirements = sorted(self.vk.aliasFlagRequirements)
+        # Sort things here to ensure moving things around the XML do not change things.
+        # extensions/versions/handles/etc. are dict[str, T] keyed by name; sorting the
+        # dict directly would only sort (and keep) its keys, discarding the values, so
+        # sort the T objects by name and keep a plain list. Not all T define __lt__, so
+        # sort by name explicitly rather than relying on it.
+        by_name = lambda x: x.name
+        self.vk.extensions = sorted(self.vk.extensions.values(), key=by_name)
+        self.vk.versions = sorted(self.vk.versions.values(), key=by_name)
+        self.vk.handles = sorted(self.vk.handles.values(), key=by_name)
+        self.vk.commands = sorted(self.vk.commands.values(), key=by_name)
+        self.vk.structs = sorted(self.vk.structs.values(), key=by_name)
+        self.vk.enums = sorted(self.vk.enums.values(), key=by_name)
+        self.vk.bitmasks = sorted(self.vk.bitmasks.values(), key=by_name)
+        self.vk.flags = sorted(self.vk.flags.values(), key=by_name)
+        self.vk.constants = sorted(self.vk.constants.values(), key=by_name)
+        self.vk.formats = sorted(self.vk.formats.values(), key=by_name)
+        self.vk.funcPointers = sorted(self.vk.funcPointers.values(), key=by_name)
+        # These map name -> dict[str, str | None], with no defined ordering on the
+        # dict values, so sort by key and keep them as dicts.
+        self.vk.aliasTypeRequirements = dict(sorted(self.vk.aliasTypeRequirements.items()))
+        self.vk.aliasFieldRequirements = dict(sorted(self.vk.aliasFieldRequirements.items()))
+        self.vk.aliasFlagRequirements = dict(sorted(self.vk.aliasFlagRequirements.items()))
 
         with open(output_file, "w") as f:
             if verbose:

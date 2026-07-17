@@ -61,6 +61,7 @@ class LinkInlineMacroBase < SpecInlineMacroBase
           # Fall through
         else
           # Suppress warnings for apiext: macros as this is such a common case
+          mark = false
           if @name.to_s != 'apiext'
             line_info = parent.document.reader.cursor.line_info
             msg = "Unknown link macro target #{@name.to_s}:#{linkxref} - there may be incorrect or missing asciidoc conditionals around this macro"
@@ -73,11 +74,13 @@ class LinkInlineMacroBase < SpecInlineMacroBase
                 logger.error "#{logger.progname}" do
                   message_with_context msg, source_location: parent.source_location
                 end
+                # Only the full Vulkan build treats these as hard errors; mark
+                # them visibly in the HTML so they can be located. SC/modular
+                # builds legitimately have many, so render as plain code text.
+                mark = true
             end
-            return create_inline parent, :quoted, '?? <code>' + linkxref + '</code>'
-          else
-            return create_inline parent, :quoted, '<code>' + linkxref + '</code>'
           end
+          return create_inline parent, :quoted, (mark ? '?? ' : '') + '<code>' + linkxref + '</code>'
         end
       end
 
