@@ -206,10 +206,11 @@ def mergeInternalFeatures(tree, apiName):
         depends = feature.get('depends', '')
         if not depends:
             return set()
-        # Parse the depends expression - for simplicity, extract feature names
-        # Dependencies can be like "VK_VERSION_1_0" or "VK_VERSION_1_0+VK_KHR_feature"
+        # Feature depends must use '+' (AND). ',' means OR in the dependency
+        # syntax and is not currently supported at the feature level.
+        if ',' in depends:
+            raise ValueError(f'Feature {feature.get("name")} has OR (",") in depends="{depends}"; use "+" for AND')
         deps = set()
-        # Split on + and , to get individual dependencies
         for dep in depends.replace('+', ',').split(','):
             dep = dep.strip()
             if dep:

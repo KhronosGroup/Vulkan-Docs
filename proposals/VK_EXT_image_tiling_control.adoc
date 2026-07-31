@@ -1,0 +1,132 @@
+// Copyright 2021-2026 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_EXT_image_tiling_control
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:sectnums:
+// Required so images render in github
+ifndef::images[:images: ../images]
+
+This proposal extends image creation to allow applications to tune the optimal tiling arrangement.
+
+== Problem Statement
+
+Image tiling arrangements present a typical space-time tradeoff in computing, where minimizing memory space is at odds with minimizing GPU access time. The existing options of `VkImageTiling` allow an application to favor access time with `VK_IMAGE_TILING_OPTIMAL` or memory space with `VK_IMAGE_TILING_LINEAR`. However, if an implementation supports multiple, optimal tiling arrangements, each with different access characteristics and memory size requirements, the implementation must decide among them.
+
+While an implementation often has sufficient information during image creation to perform heuristics, the application developer has this information combined with higher-level usage expectations and platform knowledge to determine the desired metrics. Cases have been identified where the driver cannot make the best choice for all applications without more details.
+
+== Solution Space
+
+The application can be given per-image control over optimal tiling selection for use as it deems necessary instead of always providing additional information required to augment an implementation's heuristic. This results in predictable behavior rather than requiring developers to modify creation arguments and analyze image memory requirements or access times to determine if the image tiling was affected.
+
+Control can be exposed by:
+
+* Adding to the `VkImageTiling` enumeration, which over-complicates support by extending the surface area of changes to functionality such as `vkGetPhysicalDeviceImageFormatProperties`. This is unnecessary, as `VK_IMAGE_TILING_OPTIMAL` already behaves as a superset of various optimal tiling arrangements.
+
+* Repurposing `VK_MESA_image_alignment_control` to influence tiling is possible but carries a different meaning of the maximum alignment permitted instead of minimize size regardless of the alignment requirement.
+
+* Extending `VkImageCreateInfo` with a structure containing options. This is the proposed solution.
+
+== Proposal
+
+The extension adds a feature structure:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceImageTilingControlFeaturesEXT
+{
+        VkStructureType sType;
+        const void *pNext;
+        VkBool32 imageTilingControl;
+} VkPhysicalDeviceImageTilingControlFeaturesEXT;
+----
+
+`imageTilingControl` is the main feature enabling this extension’s functionality and must be supported if this extension is supported.
+
+A structure is also added to be chained from `VkImageCreateInfo`. It contains an added enumeration for fine-grained control on implementations that support multiple, optimal tiling arrangements:
+
+[source,c]
+----
+typedef struct VkImageTilingControlCreateInfoEXT
+{
+        VkStructureType sType;
+        const void *pNext;
+        VkImageTilingControlEXT imageTiling;
+} VkImageTilingControlCreateInfoEXT;
+----
+[source,c]
+----
+typedef enum VkImageTilingControlEXT {
+    VK_IMAGE_TILING_CONTROL_DEFAULT_EXT = 0,
+    VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT = 1,
+    VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT = 2
+} VkImageTilingControlEXT;
+----
+
+- `VK_IMAGE_TILING_CONTROL_DEFAULT_EXT` - specifies that the tiling arrangement is the same as with `VkImageTilingControlCreateInfoEXT` omitted.
+
+- `VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT` - specifies that the tiling arrangement minimizes memory size requirements (though, more additional padding than `VK_IMAGE_TILING_LINEAR` is permitted).
+
+- `VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT` - specifies that the tiling arrangement maximizes memory access performance with reduced consideration for increases in memory size requirements.
+
+Instead of an enumeration, a single flag could be sufficient, but it would require a query to be added for default behavior. This complicates developer handling if the default behavior may change over time. An enumeration with multiple options provides clarity in the developer's choice, while still permitting flexibility in an implementation's default heuristic.
+
+Multiple enumeration values may result in the same tiling arrangement, especially for images with extents that are multiples of optimal tiling block sizes. For these cases, no tradeoff exists for the image. When using `VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT`, the memory size requirements are always less than or equal to those of `VK_IMAGE_TILING_CONTROL_DEFAULT_EXT` and `VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT`. However, there are no performance guarantees when using `VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT` as image access times are dependent on many factors, so a best effort is made.
+
+Note that `optimalTilingLayoutUUID` must consider these enumeration values in addition to `VK_IMAGE_TILING_OPTIMAL` to ensure compatible data layouts for `VK_HOST_IMAGE_COPY_MEMCPY_BIT` flag usage.
+
+== Examples
+
+A developer is porting an existing game to a new platform with less memory. Setting `VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT` on all images may help identify a minimum memory budget without requiring changes to the game assets. Then, the value can be set selectively through tuning to also meet performance targets.
+
+During performance optimization, memory latency is seen as the bottleneck. Setting `VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT` may reduce memory access time without having to modify the shader access pattern of that image.
+
+== Issues
+
+1) What happens if `VK_MESA_image_alignment_control` is used with this
+extension?
+
+*RESOLVED*: This extension does not restrict or modify the behavior of
+`VK_MESA_image_alignment_control`. If it specifies a maximum requested
+alignment, that must constrain the set of optimal tiling arrangements to be
+selected using `VkImageTilingControlCreateInfoEXT`. While specifying
+`VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT` may increase the image memory size
+requirement, it must not increase the image memory alignment requirement beyond
+a specified maximum.
+
+2) Will the results of `vkGetDeviceImageSubresourceLayoutKHR` from
+`VK_KHR_maintenance5` and `vkGetDeviceImageMemoryRequirementsKHR` from
+`VK_KHR_maintenance4` be affected by `VkImageTilingControlCreateInfoEXT` in the
+`pNext` chain of `VkImageCreateInfo`?
+
+*RESOLVED*: Yes. Specifying image tiling control values other than
+`VK_IMAGE_TILING_CONTROL_DEFAULT_EXT` may change the optimal tiling arrangement
+used, and this must be reflected in the `VkSubresourceLayout` and
+`VkMemoryRequirements`. The returned values for these functions must remain
+identical to those returned by `vkGetImageSubresourceLayout` and
+`vkGetImageMemoryRequirements2` respectively.
+
+3) Does using this extension change the image memory requirement guarantees
+introduced by `VK_KHR_maintenance4`?
+
+*RESOLVED*: The memory requirement rules are applicable for images with the
+same `VkImageTilingControlEXT` value. `imageTiling` is included with other
+identical creation parameters for the size memory requirement to never be
+greater than that of another image created with greater or equal values in each
+`extent` and also, for the alignment memory requirement to be equal for images
+with certain, identical creation parameters. A `VK_KHR_maintenance4` interaction
+is added to specify this `imageTiling` inclusion for the alignment memory
+requirement.
+
+4) Is there any interaction with `VK_EXT_image_drm_format_modifier`?
+
+*RESOLVED*: Yes. While `VkImageDrmFormatModifierExplicitCreateInfoEXT` must use
+the tiling arrangement specified by the modifier, this extension can be used to
+control the tiling arrangement selection from the list of modifiers in
+`VkImageDrmFormatModifierListCreateInfoEXT`.
+
+== Validation and Tools
+
+Since optimal tiling is implementation-dependent already, there is little impact on existing validation and tools. However, application and driver updates may break API capture compatibility as with other changes to memory size requirements.

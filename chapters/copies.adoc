@@ -157,9 +157,6 @@ include::{generated}/api/protos/vkCmdCopyBuffer.adoc[]
 
 Each source region specified by pname:pRegions is copied from the source
 buffer to the destination region of the destination buffer.
-If any of the specified regions in pname:srcBuffer overlaps in memory with
-any of the specified regions in pname:dstBuffer, values read from those
-overlapping regions are undefined:.
 
 .Valid Usage
 ****
@@ -216,10 +213,6 @@ endif::VK_KHR_copy_commands2[]
 
 Each source region specified by pname:pCopyBufferInfo->pRegions is copied
 from the source buffer to the destination region of the destination buffer.
-If any of the specified regions in pname:pCopyBufferInfo->srcBuffer overlaps
-in memory with any of the specified regions in
-pname:pCopyBufferInfo->dstBuffer, values read from those overlapping regions
-are undefined:.
 
 .Valid Usage
 ****
@@ -314,15 +307,44 @@ include::{generated}/api/protos/vkCmdCopyImage.adoc[]
 
 Each source region specified by pname:pRegions is copied from the source
 image to the destination region of the destination image.
-If any of the specified regions in pname:srcImage overlaps in memory with
-any of the specified regions in pname:dstImage, values read from those
-overlapping regions are undefined:.
+
 If any region accesses a depth aspect in pname:dstImage
 ifdef::VK_EXT_depth_range_unrestricted[]
 and the `apiext:VK_EXT_depth_range_unrestricted` extension is not enabled,
 endif::VK_EXT_depth_range_unrestricted[]
 values copied from pname:srcImage outside of the range [eq]#[0,1]# will be
 written as undefined: values to the destination image.
+
+Copy regions for each image must: be aligned to a multiple of the texel
+block extent in each dimension, except at the edges of the image, where
+region extents must: match the edge of the image.
+
+[[copies-images-addressing]]
+The texels in the images are accessed as follows.
+
+Texels at each coordinate [eq]#(x,y,z,layer)# in a image subresource are
+accessed, where:
+
+  {empty}:: [eq]#x# is in the range [eq]#[offset.x, offset.x {plus}
+            extent.width)#,
+  {empty}:: [eq]#y# is in the range [eq]#[offset.y, offset.y {plus}
+            extent.height)#,
+  {empty}:: [eq]#z# is in the range [eq]#[offset.z, offset.z {plus}
+            extent.depth)#,
+  {empty}:: [eq]#layer# is in the range [eq]#[subresource.baseArrayLayer,
+            subresource.baseArrayLayer {plus} subresource.layerCount)#
+
+where for pname:srcImage, _offset_, _extent_, and _subresource_ are
+pname:srcOffset, pname:extent, and pname:srcSubresource for each region,
+respectively.
+
+For pname:dstImage, _offset_, _extent_ , and _subresource_ are
+pname:dstOffset, pname:extent, and pname:dstSubresource for each region,
+respectively, where pname:dstOffset and pname:extent are first
+<<formats-size-compatibility, size-adjusted>> if the format of the
+destination image has a different <<formats-compatibility-classes,block
+extent>> than the format of the source image (e.g. one is a compressed
+format).
 
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 <<formats-multiplanar, Multi-planar images>> can: only be copied on a
@@ -333,15 +355,6 @@ When copying planes of multi-planar images, the format considered is the
 <<formats-compatible-planes, compatible format for that plane>>, rather than
 the format of the multi-planar image.
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-
-If the format of the destination image has a different
-<<formats-compatibility-classes,block extent>> than the source image (e.g.
-one is a compressed format), the offset and extent for each of the regions
-specified is <<formats-size-compatibility, scaled according to the block
-extents of each format>> to match in size.
-Copy regions for each image must: be aligned to a multiple of the texel
-block extent in each dimension, except at the edges of the image, where
-region extents must: match the edge of the image.
 
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance1[]
 Image data can: be copied between images with different image types.
@@ -360,6 +373,21 @@ with a height of 1.
 Otherwise, other combinations of image types are disallowed.
 endif::VK_BASE_VERSION_1_4,VK_KHR_maintenance5[]
 endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance1[]
+
+The memory locations accessed by the source and destination images overlap
+if they <<resources-memory-aliasing,alias each other>>, both
+pname:srcSubresource and pname:dstSubresource overlap the aliased range, and
+any of the following are true:
+  * their contents are not able to be interpreted in consistent ways,
+  * if the aliased regions are _host-accessible_, their accessed regions
+    defined above overlap, where the memory locations accessed by the texels
+    of a <<glossary-linear-resource,linear image>> is according to its
+    slink:VkSubresourceLayout
+  * otherwise, their accessed texel ranges share any of the same texel
+    coordinates
+
+The memory locations of an image overlap if those two ranges share any of
+the same texel coordinates in the same image aspects.
 
 .Valid Usage
 ****
@@ -683,17 +711,16 @@ include::{generated}/api/structs/VkCopyDeviceMemoryImageInfoKHR.adoc[]
 
 .Valid Usage
 ****
-  * [[VUID-VkCopyDeviceMemoryImageInfoKHR-addressRange-13026]]
-    The range of memory backing the address range defined by the
-    pname:addressRange member of any element of pname:pRegions must: not
-    overlap the memory backing the address range defined by the
-    pname:addressRange of any other element of pname:pRegions
   * [[VUID-VkCopyDeviceMemoryImageInfoKHR-addressRange-13027]]
-    The range of memory backing the address range defined by the
-    pname:addressRange member of any element of pname:pRegions must: not
-    overlap the memory backing any texels in pname:image defined by the
-    pname:imageSubresource, pname:imageOffset, and pname:imageExtent members
-    of any element of pname:pRegions
+    Each memory location accessed by this command must: not be accessed by
+    both a source region and a destination region, as specified in
+    pname:pRegions and accessed according to
+    <<copies-buffers-images-addressing,Buffer and Image Addressing>>
+  * [[VUID-VkCopyDeviceMemoryImageInfoKHR-pRegions-12473]]
+    Each memory location accessed by this command must: not be accessed by
+    more than one destination region, as specified by pname:pRegions and
+    accessed according to <<copies-buffers-images-addressing,Buffer and
+    Image Addressing>>
   * [[VUID-VkCopyDeviceMemoryImageInfoKHR-imageLayout-13028]]
     The pname:imageLayout member of each element of pname:pRegions must:
     specify the layout of the image subresource specified for that element
@@ -828,7 +855,7 @@ ifdef::VK_EXT_host_image_copy,VK_KHR_device_address_commands,VK_NV_copy_memory_i
 a buffer and an image, texels in the image and bytes in memory are accessed
 as follows.
 
-Texels at each coordinate [eq]#(x,y,z,layer)# in the image subresource are
+Texels at each coordinate [eq]#(x,y,z,layer)# in a image subresource are
 accessed, where:
 
   {empty}:: [eq]#x# is in the range [eq]#[pname:imageOffset.x,
@@ -947,6 +974,16 @@ endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 Each texel block is copied from one resource to the other according to the
 above addressing equations.
 
+The memory locations accessed by a buffer and image overlap if they
+<<resources-memory-aliasing,alias each other>>, the pname:imageSubresource
+overlaps the aliased range, and either:
+  * their contents are not interpreted in consistent ways, or
+  * their accessed regions defined above overlap, where the memory locations
+    accessed by the texels of a <<glossary-linear-resource,linear image>> is
+    according to its slink:VkSubresourceLayout
+
+The memory locations of an image overlap if those two ranges share any of
+the same texel coordinates in the same image aspects.
 
 [open,refpage='vkCmdCopyBufferToImage',desc='Copy data from a buffer into an image',type='protos']
 --
@@ -970,9 +1007,6 @@ Each source region specified by pname:pRegions is copied from the source
 buffer to the destination region of the destination image according to the
 <<copies-buffers-images-addressing,addressing calculations>> for each
 resource.
-If any of the specified regions in pname:srcBuffer overlaps in memory with
-any of the specified regions in pname:dstImage, values read from those
-overlapping regions are undefined:.
 If any region accesses a depth aspect in pname:dstImage
 ifdef::VK_EXT_depth_range_unrestricted[]
 and the `apiext:VK_EXT_depth_range_unrestricted` extension is not enabled,
@@ -1029,9 +1063,6 @@ Each source region specified by pname:pRegions is copied from the source
 image to the destination region of the destination buffer according to the
 <<copies-buffers-images-addressing,addressing calculations>> for each
 resource.
-If any of the specified regions in pname:srcImage overlaps in memory with
-any of the specified regions in pname:dstBuffer, values read from those
-overlapping regions are undefined:.
 
 Copy regions for the image must: be aligned to a multiple of the texel block
 extent in each dimension, except at the edges of the image, where region
@@ -1439,13 +1470,6 @@ Bytes in host memory and texels in images are accessed as specified in
 <<copies-buffers-images,Copying Data Between Buffers and Images>>, with
 buffers replaced with host memory.
 
-[NOTE]
-====
-Copies to and from an image on the host are not internally synchronized.
-Simultaneous access (involving writes) to overlapping image memory on the
-host constitutes a <<memory-model-access-data-race,data race>>.
-====
-
 [open,refpage='vkCopyMemoryToImage',desc='Copy data from host memory into an image',type='protos']
 --
 :refpage: vkCopyMemoryToImage
@@ -1531,6 +1555,16 @@ include::{chapters}/commonvalidity/copy_anyimage_to_imageany_no_rotation_common.
 include::{chapters}/commonvalidity/copy_anyimage_to_imageany_single_sampled_common.adoc[]
 include::{chapters}/commonvalidity/copy_bufferimage_to_imagebuffer_common.adoc[]
 include::{chapters}/commonvalidity/copy_bufferimage_to_imagebuffer_not_both_image_common.adoc[]
+  * [[VUID-VkCopyMemoryToImageInfo-pRegions-09062]]
+    Each memory location accessed by this command must: not be accessed in
+    both a source region and a destination region, as specified in
+    pname:pRegions and accessed according to
+    <<copies-buffers-images-addressing,Buffer and Image Addressing>>
+  * [[VUID-VkCopyMemoryToImageInfo-pRegions-12474]]
+    Each memory location accessed by this command must: not be accessed in
+    more than one destination region, as specified by pname:pRegions and
+    accessed according to <<copies-buffers-images-addressing,Buffer and
+    Image Addressing>>
   * [[VUID-VkCopyMemoryToImageInfo-dstImageLayout-09059]]
     pname:dstImageLayout must: specify the current layout of the image
     subresources of pname:dstImage specified in pname:pRegions
@@ -1589,12 +1623,7 @@ structure apply here as well.
   * [[VUID-VkMemoryToImageCopy-pHostPointer-09061]]
     pname:pHostPointer must: point to memory that is large enough to contain
     all memory locations that are accessed according to
-    <<copies-buffers-images-addressing,Buffer and Image Addressing>>, for
-    each element of pname:pRegions
-  * [[VUID-VkMemoryToImageCopy-pRegions-09062]]
-    The union of all source regions, and the union of all destination
-    regions, specified by the elements of pname:pRegions, must: not overlap
-    in memory
+    <<copies-buffers-images-addressing,Buffer and Image Addressing>>
 include::{chapters}/commonvalidity/buffer_or_memory_image_copy_common.adoc[]
 ****
 
@@ -1687,6 +1716,16 @@ include::{chapters}/commonvalidity/copy_anyimage_to_imageany_no_rotation_common.
 include::{chapters}/commonvalidity/copy_anyimage_to_imageany_single_sampled_common.adoc[]
 include::{chapters}/commonvalidity/copy_bufferimage_to_imagebuffer_common.adoc[]
 include::{chapters}/commonvalidity/copy_bufferimage_to_imagebuffer_not_both_image_common.adoc[]
+  * [[VUID-VkImageToMemoryCopy-pRegions-09067]]
+    Each memory location accessed by this command must: not be accessed in
+    both a source region and a destination region, as specified in
+    pname:pRegions and accessed according to
+    <<copies-buffers-images-addressing,Buffer and Image Addressing>>
+  * [[VUID-VkCopyImageToMemoryInfo-pRegions-12475]]
+    Each memory location accessed by this command must: not be accessed in
+    more than one destination region, as specified by pname:pRegions and
+    accessed according to <<copies-buffers-images-addressing,Buffer and
+    Image Addressing>>
   * [[VUID-VkCopyImageToMemoryInfo-srcImageLayout-09064]]
     pname:srcImageLayout must: specify the current layout of the image
     subresources of pname:srcImage specified in pname:pRegions
@@ -1745,12 +1784,7 @@ structure apply here as well.
   * [[VUID-VkImageToMemoryCopy-pHostPointer-09066]]
     pname:pHostPointer must: point to memory that is large enough to contain
     all memory locations that are accessed according to
-    <<copies-buffers-images-addressing,Buffer and Image Addressing>>, for
-    each element of pname:pRegions
-  * [[VUID-VkImageToMemoryCopy-pRegions-09067]]
-    The union of all source regions, and the union of all destination
-    regions, specified by the elements of pname:pRegions, must: not overlap
-    in memory
+    <<copies-buffers-images-addressing,Buffer and Image Addressing>>
 include::{chapters}/commonvalidity/buffer_or_memory_image_copy_common.adoc[]
 ****
 
@@ -1877,6 +1911,15 @@ writes to the copy regions has completed before the host performs the copy.
   * [[VUID-VkCopyImageToImageInfo-srcImage-09069]]
     pname:srcImage and pname:dstImage must: have been created with identical
     image creation parameters
+  * [[VUID-VkCopyImageToImageInfo-pRegions-12476]]
+    Each memory location accessed by this command must: not be accessed by
+    both a source region and a destination region, as specified by
+    pname:pRegions and accessed according to <<copies-images-addressing,Copy
+    Image Addressing>>
+  * [[VUID-VkCopyImageToImageInfo-pRegions-12477]]
+    Each memory location accessed by this command must: not be accessed by
+    more than one destination region, as specified by pname:pRegions and
+    accessed according to <<copies-images-addressing,Copy Image Addressing>>
 
 :imageparam: srcImage
 :imagesubresource: srcSubresource
@@ -1938,8 +1981,6 @@ include::{generated}/api/protos/vkCmdCopyMemoryIndirectKHR.adoc[]
 Each region specified in the memory referenced by
 pname:pCopyMemoryIndirectInfo->copyAddressRange is copied from the source
 region to the specified destination region.
-The results are undefined: if any of the source and destination regions
-overlap in memory.
 
 .Valid Usage
 ****
@@ -2003,9 +2044,10 @@ include::{generated}/api/structs/VkCopyMemoryIndirectInfoKHR.adoc[]
     pname:copyCount must: be less than or equal to
     [eq]#pname:copyAddressRange.size / pname:copyAddressRange.stride#
   * [[VUID-VkCopyMemoryIndirectInfoKHR-copyAddressRange-10945]]
-    Any of the source or destination memory regions specified in
-    pname:copyAddressRange must: not overlap with any of the specified
-    destination memory regions
+    Each memory location accessed by this command must: not be accessed by
+    both a source region and a destination region, and must: not be accessed
+    by more than one destination region, as specified in
+    pname:copyAddressRange
   * [[VUID-VkCopyMemoryIndirectInfoKHR-copyAddressRange-12210]]
     pname:copyAddressRange must: be a device address range allocated to the
     application from a buffer created with the
@@ -2094,8 +2136,6 @@ include::{generated}/api/protos/vkCmdCopyMemoryIndirectNV.adoc[]
 
 Each region read from pname:copyBufferAddress is copied from the source
 region to the specified destination region.
-The results are undefined: if any of the source and destination regions
-overlap in memory.
 
 .Valid Usage
 ****
@@ -2112,9 +2152,10 @@ overlap in memory.
     must: support at least one of the queue types specified in
     slink:VkPhysicalDeviceCopyMemoryIndirectPropertiesKHR::pname:supportedQueues
   * [[VUID-vkCmdCopyMemoryIndirectNV-copyBufferAddress-10946]]
-    Any of the source or destination memory regions specified in
-    pname:copyBufferAddress must: not overlap with any of the specified
-    destination memory regions
+    Each memory location accessed by this command must: not be accessed by
+    both a source region and a destination region, and must: not be accessed
+    by more than one destination region, as specified in
+    pname:copyBufferAddress
 ****
 
 include::{generated}/validity/protos/vkCmdCopyMemoryIndirectNV.adoc[]
@@ -2146,8 +2187,6 @@ pname:pImageSubresources->baseArrayLayer and
 pname:pImageSubresources->layerCount respectively as pname:imageOffset and
 pname:imageExtent from slink:VkCopyMemoryToImageIndirectCommandKHR are only
 available at device execution time.
-The results are undefined: if any of the source and destination regions
-overlap in memory.
 
 :imageparam: dstImage
 
