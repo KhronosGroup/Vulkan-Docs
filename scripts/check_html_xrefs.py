@@ -13,7 +13,7 @@
 import argparse
 import re
 import sys
-from lxml import etree
+import defusedxml.lxml
 
 SECTNAME = re.compile(r'sect(?P<level>\d+)')
 
@@ -49,8 +49,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     for filename in args.files:
-        parser = etree.HTMLParser()
-        tree = etree.parse(filename, parser)
+        parser = defusedxml.lxml.lxml_etree.HTMLParser()
+        tree = defusedxml.lxml.parse(filename, parser)
 
         # Find all 'id' elements
         id_elems = tree.findall('.//*[@id]')
