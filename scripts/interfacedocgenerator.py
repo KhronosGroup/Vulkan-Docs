@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import re
 from generator import OutputGenerator, write
 from parse_dependency import dependencyLanguageSpecMacros
@@ -118,8 +119,8 @@ class InterfaceDocGenerator(OutputGenerator):
 
         - feature - name of the feature being generated"""
 
-        filename = feature + self.genOpts.conventions.file_suffix
-        fp = open(f'{self.genOpts.directory}/{filename}', 'w', encoding='utf-8')
+        filename = os.path.basename(feature + self.genOpts.conventions.file_suffix)
+        fp = open(os.path.join(self.genOpts.directory, filename), 'w', encoding='utf-8')
 
         # Write out the lists of new interfaces added by the feature
         self.writeNewInterfaces(feature, 'define',      'New Macros',           'dlink:',   fp)
