@@ -8,14 +8,14 @@
 # Usage: linkcheck file.html
 
 import argparse
-from lxml import etree as et
+from lxml import etree as et  # nosec B410
 
 def printSet(s):
     for key in sorted(s):
         print(f'    {key}')
 
 def checkLinks(file, args):
-    parser = et.HTMLParser()
+    parser = et.HTMLParser(no_network=True)
     tree = et.parse(file, parser)
 
     # Remove all <svg> elements, which just add noise to the cross-referencing

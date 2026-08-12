@@ -17,7 +17,7 @@
 import argparse
 import re
 import sys
-from lxml import etree
+from lxml import etree  # nosec B410
 
 def contains_any_of(words, wordlist):
     """Returns True if any element of 'word' is contained in 'words'
@@ -176,7 +176,7 @@ if __name__ == '__main__':
 
         return tag in rejected_tags or tag.startswith('inkscape:') or tag.startswith('sodipodi:')
 
-    parser = etree.HTMLParser()
+    parser = etree.HTMLParser(no_network=True)
 
     # There is exactly one HTML filename
     filename = args.files[0]
