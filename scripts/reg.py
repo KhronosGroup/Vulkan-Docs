@@ -272,6 +272,7 @@ def mergeInternalFeatures(tree, apiName):
             tree.remove(internal_feature)
 
 
+
 def stripNonmatchingAPIs(tree, apiName, actuallyDelete = True):
     """Remove tree Elements with 'api' attributes matching apiName.
 
@@ -293,7 +294,7 @@ def stripNonmatchingAPIs(tree, apiName, actuallyDelete = True):
             if apiNameMatch(apiName, api):
                 # Add child to the queue
                 stack.append(child)
-            elif not apiNameMatch(apiName, api):
+            else:
                 # Child does not match requested api. Remove it.
                 if actuallyDelete:
                     parent.remove(child)
@@ -725,16 +726,13 @@ class Registry:
         self.enumvaluedict = {}
 
         # Get vendor tags
-        vendors = []
-        for tag in self.reg.findall('tags/tag'):
-            vendors.append(tag.get('name'))
+        vendors = [tag.get('name') for tag in self.reg.findall('tags/tag')]
 
         # Function to check which (if any) vendor suffix is present on
         # an API name
         def getApiVendorTag(name):
             for vendor in vendors:
-                n = len(vendor)
-                if name[-n:] == vendor:
+                if name.endswith(vendor):
                     return vendor
             return None
 
@@ -1012,26 +1010,20 @@ class Registry:
             self.addElementInfo(spirv, spirvInfo, 'spirvcapability', self.spirvcapdict)
 
         for format in self.reg.findall('formats/format'):
-            condition = None
             format_name = format.get('name')
-            if format_name in format_condition:
-                condition = format_condition[format_name]
+            condition = format_condition.get(format_name)
             formatInfo = FormatInfo(format, condition)
             self.addElementInfo(format, formatInfo, 'format', self.formatsdict)
 
         for stage in self.reg.findall('sync/syncstage'):
-            condition = None
             stage_flag = stage.get('name')
-            if stage_flag in sync_pipeline_stage_condition:
-                condition = sync_pipeline_stage_condition[stage_flag]
+            condition = sync_pipeline_stage_condition.get(stage_flag)
             syncInfo = SyncStageInfo(stage, condition)
             self.addElementInfo(stage, syncInfo, 'syncstage', self.syncstagedict)
 
         for access in self.reg.findall('sync/syncaccess'):
-            condition = None
             access_flag = access.get('name')
-            if access_flag in sync_access_condition:
-                condition = sync_access_condition[access_flag]
+            condition = sync_access_condition.get(access_flag)
             syncInfo = SyncAccessInfo(access, condition)
             self.addElementInfo(access, syncInfo, 'syncaccess', self.syncaccessdict)
 
