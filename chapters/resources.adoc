@@ -187,6 +187,19 @@ structure, pname:usage is ignored, and the effective usage flags are defined
 by slink:VkBufferUsageFlags2CreateInfo::pname:usage.
 endif::VK_BASE_VERSION_1_4,VK_KHR_maintenance5,VK_KHR_extended_flags[]
 
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+If slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE is included in the
+pname:pNext chain, and a sparse buffer is being created, the alignment for
+buffer device addresses can: be controlled.
+For non-sparse buffers, alignment requirements are specified at device
+memory allocation time in flink:vkAllocateMemory instead.
+For implementations which allocate buffer device addresses regardless at
+buffer create time, the implementation is expected to allocate buffer device
+addresses with alignment equal to
+<<limits-maxBufferDeviceAddressAllocationAlignment,pname:maxBufferDeviceAddressAllocationAlignment>>,
+effectively ignoring any application-requested alignment.
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
+
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/buffer_usage_flags_common.adoc[]
@@ -484,6 +497,24 @@ ifdef::VK_EXT_descriptor_heap[]
     ename:VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT, or
     ename:VK_BUFFER_CREATE_SPARSE_ALIASED_BIT flags
 endif::VK_EXT_descriptor_heap[]
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+  * [[VUID-VkBufferCreateInfo-flags-12515]]
+    If pname:flags does not include
+    ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT,
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    must: be 0
+  * [[VUID-VkBufferCreateInfo-alignment-12516]]
+    If
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    is not 0, the <<resources-effective-buffer-usage, effective usage
+    flags>> must: include ename:VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT
+  * [[VUID-VkBufferCreateInfo-alignment-12517]]
+    If
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    is not 0,
+    slink:VkBufferOpaqueCaptureAddressCreateInfo::pname:opaqueCaptureAddress
+    must: be 0
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
 ****
 ifdef::VKSC_VERSION_1_0[]
 ifdef::hidden[]
@@ -1470,6 +1501,22 @@ the return value will be the same address that was returned at capture time.
 The returned address must: satisfy the alignment requirement specified by
 slink:VkMemoryRequirements::pname:alignment for the buffer in
 slink:VkBufferDeviceAddressInfo::pname:buffer.
+
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+If the buffer was created without ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT,
+and the bound slink:VkDeviceMemory was created with specified non-zero
+alignment of
+slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment,
+either the returned address minus
+slink:VkBindBufferMemoryInfo::pname:memoryOffset or equivalent
+flink:vkBindBufferMemory offset must: satisfy that alignment requirement, or
+the returned address must: satisfy that alignment requirement.
+
+If the buffer was created with ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT,
+and the buffer was created with non-zero
+slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment, the
+returned address must: satisfy that alignment requirement.
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
 
 If multiple slink:VkBuffer objects are bound to overlapping ranges of
 slink:VkDeviceMemory, implementations may: return address ranges which
@@ -3086,14 +3133,8 @@ ifdef::VK_BASE_VERSION_1_4,VK_EXT_host_image_copy[]
   * [[VUID-VkImageCreateInfo-imageCreateFormatFeatures-09048]]
     If pname:imageCreateFormatFeatures (as defined in
     <<resources-image-creation-limits,Image Creation Limits>>) does not
-    contain ename:VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT
-ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
-    and the pname:pNext chain does not include a
-    slink:VkExternalFormatANDROID structure with non-zero
-    pname:externalFormat
-endif::VK_ANDROID_external_memory_android_hardware_buffer[]
-    , then pname:usage must: not contain
-    ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT
+    contain ename:VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT, then
+    pname:usage must: not contain ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT
   * [[VUID-VkImageCreateInfo-usage-10245]]
     If pname:usage includes ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT, then the
     <<features-hostImageCopy, pname:hostImageCopy>> feature must: be enabled
@@ -6448,12 +6489,6 @@ include::{chapters}/commonvalidity/memory_reservation_request_count_common.adoc[
     slink:VkDeviceObjectReservationCreateInfo::pname:layeredImageViewRequestCount
     specified when pname:device was created
 endif::VKSC_VERSION_1_0[]
-ifdef::VK_KHR_extended_flags[]
-  * [[VUID-vkCreateImageView-pNext-12444]]
-    The pname:pNext chain of pname:pCreateInfo must: contain at most one of
-    the structures slink:VkImageViewUsageCreateInfo and
-    slink:VkImageViewUsage2CreateInfoKHR
-endif::VK_KHR_extended_flags[]
 ****
 
 include::{generated}/validity/protos/vkCreateImageView.adoc[]
@@ -6522,11 +6557,7 @@ ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, pname:format must: equal the
 pname:format used to create pname:image.
 
 If pname:image was created with ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
-pname:format can: be set to a <<formats-compatibility-classes, format that
-is compatible>> with the pname:format used to create pname:image
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[.]
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[]
-with the following exceptions:
+pname:format can: be set to a different format as follows:
 
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
   * If pname:image was created with the
@@ -6541,7 +6572,10 @@ ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * If creating a <<image-views-multi-plane-view,multi-plane view>>,
     pname:format must: equal the pname:format used to create pname:image.
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[]
+  * {empty}
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[Otherwise,]
+    pname:format must: be <<formats-compatibility-classes, compatible>> with
+    the pname:format of pname:image.
 
 Views of compatible formats will have the same mapping between texel
 coordinates and memory locations irrespective of the pname:format, with only
@@ -6968,14 +7002,6 @@ endif::VK_BASE_VERSION_1_2,VK_KHR_image_format_list[]
     ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag pname:format must: be
     identical to the pname:format used to create pname:image
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageViewCreateInfo-image-12504]]
-    If creating a <<image-views-plane-view,single-plane view>>, pname:image
-    must: have been created with the
-    ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT create flag
-  * [[VUID-VkImageViewCreateInfo-format-12505]]
-    If creating a <<image-views-plane-view,single-plane view>>, the
-    pname:format used to create pname:image must: have a
-    <<formats-multiplanar, multi-planar format>>
   * [[VUID-VkImageViewCreateInfo-image-01586]]
     If creating a <<image-views-plane-view,single-plane view>>, pname:format
     must: be compatible with the elink:VkFormat for the plane of the
@@ -7384,8 +7410,8 @@ ifdef::VK_QCOM_image_processing[]
     sname:VkPhysicalDeviceImageProcessingPropertiesQCOM::pname:maxWeightFilterDimension.height>>
 endif::VK_QCOM_image_processing[]
   * [[VUID-VkImageViewCreateInfo-subresourceRange-09594]]
-    pname:subresourceRange.aspectMask must: be valid for the pname:format
-    the pname:image was created with
+    pname:subresourceRange.aspectMask must: <<resources-valid-aspect-mask,be
+    valid>> for the pname:format the pname:image was created with
 ifdef::VK_KHR_maintenance11[]
   * [[VUID-VkImageViewCreateInfo-image-13357]]
     If pname:image was created with
@@ -7619,6 +7645,7 @@ If the number of layers in the view, whether set explicitly in
 pname:layerCount or implied by ename:VK_REMAINING_ARRAY_LAYERS, is not a
 multiple of 6, the last cube map in the array must: not be accessed.
 
+[[resources-valid-aspect-mask]]
 pname:aspectMask must: be only ename:VK_IMAGE_ASPECT_COLOR_BIT,
 ename:VK_IMAGE_ASPECT_DEPTH_BIT or ename:VK_IMAGE_ASPECT_STENCIL_BIT if
 pname:format is a color, depth-only or stencil-only format, respectively.

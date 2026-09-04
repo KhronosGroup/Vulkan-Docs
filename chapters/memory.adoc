@@ -1109,6 +1109,29 @@ mechanism would be 128-byte aligned.
 This ensures that applications can: correctly suballocate objects of
 different types (with potentially different alignment requirements) in the
 same memory object.
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+If slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE is included in the
+pname:pNext chain of pname:pAllocateInfo, the allocation requirements can:
+be further increased to meet alignment requirements which are beyond the
+requirements imposed by the implementation.
+This increased alignment can: only be observed through addresses returned by
+flink:vkGetBufferDeviceAddress.
+ifdef::VK_KHR_acceleration_structure[]
+Acceleration structure alignment is outside the scope of this alignment.
+ifdef::VK_KHR_device_address_commands[]
+Such alignment can: be enforced by flink:vkCreateAccelerationStructure2KHR
+which inherits the device address verbatim.
+endif::VK_KHR_device_address_commands[]
+endif::VK_KHR_acceleration_structure[]
+ifdef::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer,VK_EXT_external_memory_metal[]
+If the parameters define an <<memory-import-operation,import>> operation,
+and the same memory object is imported into multiple slink:VkDeviceMemory
+handles,
+slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment may:
+be ignored, and the implementation may: use the alignment of an existing
+import of the same handle.
+endif::VK_KHR_external_memory_win32,VK_KHR_external_memory_fd,VK_EXT_external_memory_host,VK_ANDROID_external_memory_android_hardware_buffer,VK_FUCHSIA_external_memory,VK_NV_external_memory_sci_buf,VK_QNX_external_memory_screen_buffer,VK_EXT_external_memory_metal[]
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
 
 ifndef::VK_BASE_VERSION_1_1[]
 When memory is allocated, its contents are undefined:.
@@ -1663,21 +1686,6 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
     flink:vkGetAndroidHardwareBufferPropertiesANDROID in
     slink:VkAndroidHardwareBufferFormatPropertiesANDROID::pname:format for
     the Android hardware buffer
-  ifdef::VK_BASE_VERSION_1_4,VK_EXT_host_image_copy[]
-  * [[VUID-VkMemoryAllocateInfo-pNext-12500]]
-    If the parameters define an import operation, the external handle is an
-    Android hardware buffer, the pname:pNext chain includes a
-    slink:VkMemoryDedicatedAllocateInfo with pname:image that is not
-    dlink:VK_NULL_HANDLE, the pname:image was created with a
-    slink:VkExternalFormatANDROID with a non-zero pname:externalFormat, and
-    the
-    slink:VkAndroidHardwareBufferFormatProperties2ANDROID::pname:formatFeatures
-    returned by flink:vkGetAndroidHardwareBufferPropertiesANDROID for the
-    Android hardware buffer does not contain
-    ename:VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT, the pname:image must:
-    not have been created with a pname:usage containing
-    ename:VK_IMAGE_USAGE_HOST_TRANSFER_BIT
-  endif::VK_BASE_VERSION_1_4,VK_EXT_host_image_copy[]
   * [[VUID-VkMemoryAllocateInfo-pNext-02388]]
     If the parameters define an import operation, the external handle is an
     Android hardware buffer, and the pname:pNext chain includes a
@@ -1839,6 +1847,19 @@ ifdef::VK_EXT_metal_objects[]
     pname:exportObjectType member must: be
     ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_BUFFER_BIT_EXT
 endif::VK_EXT_metal_objects[]
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+  * [[VUID-VkMemoryAllocateInfo-flags-12510]]
+    If slink:VkMemoryAllocateFlagsInfo::pname:flags does not include
+    ename:VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT,
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    must: be 0
+  * [[VUID-VkMemoryAllocateInfo-alignment-12511]]
+    If
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    is not 0,
+    slink:VkMemoryOpaqueCaptureAddressAllocateInfo::pname:opaqueCaptureAddress
+    must: be 0
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
 ****
 
 include::{generated}/validity/structs/VkMemoryAllocateInfo.adoc[]
@@ -2154,6 +2175,46 @@ If this structure is not included, it is as if the pname:priority value were
 include::{generated}/validity/structs/VkMemoryPriorityAllocateInfoEXT.adoc[]
 --
 endif::VK_EXT_memory_priority[]
+
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+If the pname:pNext chain includes a
+sname:VkBufferDeviceAddressAlignmentAllocateInfoVALVE structure, then that
+structure requests a minimum buffer device address alignment for bound
+buffers.
+
+[open,refpage='VkBufferDeviceAddressAlignmentAllocateInfoVALVE',desc='Specify minimum buffer device address alignment',type='structs']
+--
+The slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE structure is
+defined as:
+
+include::{generated}/api/structs/VkBufferDeviceAddressAlignmentAllocateInfoVALVE.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:alignment is the minimum alignment that implementation must:
+    allocate for any buffer device addresses.
+
+If this struct is not present in a pname:pNext chain, pname:alignment is
+assumed to be 0.
+If pname:alignment is 0, this alignment request is ignored.
+
+.Valid Usage
+****
+  * [[VUID-VkBufferDeviceAddressAlignmentAllocateInfoVALVE-alignment-12512]]
+    If pname:alignment is not 0, it must: be power-of-two
+  * [[VUID-VkBufferDeviceAddressAlignmentAllocateInfoVALVE-alignment-12513]]
+    If pname:alignment is not 0,
+    <<features-bufferDeviceAddressAllocationAlignment,pname:bufferDeviceAddressAllocationAlignment>>
+    must: be enabled
+  * [[VUID-VkBufferDeviceAddressAlignmentAllocateInfoVALVE-alignment-12514]]
+    pname:alignment must: be less-than or equal-to
+    <<limits-maxBufferDeviceAddressAllocationAlignment,pname:maxBufferDeviceAddressAllocationAlignment>>
+****
+
+include::{generated}/validity/structs/VkBufferDeviceAddressAlignmentAllocateInfoVALVE.adoc[]
+--
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
 
 ifdef::VK_EXT_pageable_device_local_memory[]
 [open,refpage='vkSetDeviceMemoryPriorityEXT',desc='Change a memory allocation priority',type='protos']
