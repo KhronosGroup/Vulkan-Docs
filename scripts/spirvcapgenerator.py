@@ -145,6 +145,14 @@ class SpirvCapabilityOutputGenerator(OutputGenerator):
                     alias = subelem.get('alias')
 
                     link_name = feature
+
+                    for member in self.registry.lookupElementInfo(struct, self.registry.typedict).getMembers():
+                        member_name = member.findtext('name')
+                        if member_name == feature:
+                            featurelink = member.get('featurelink')
+                            if featurelink is not None:
+                                link_name = featurelink
+
                     # For cases, like bufferDeviceAddressEXT where need manual help
                     if alias:
                         link_name = alias

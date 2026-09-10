@@ -37,3 +37,5 @@ if __name__ == '__main__':
 
     tree = etree.parse(args.xml)
     tree.write(args.output, encoding='UTF-8', xml_declaration=True)
+    fp = open(args.output, mode='a', encoding='UTF-8')
+    fp.write('\n')

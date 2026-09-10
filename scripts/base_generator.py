@@ -8,7 +8,7 @@ import pickle
 import os
 import tempfile
 import copy
-from vulkan_object import (VulkanObject,
+from vulkan_object import (VulkanObject, CapabilityAlias, StructCapabilityAlias, ExtensionCapabilityAlias,
     Extension, Version, Legacy, Handle, FuncPointerParam, FuncPointer, Param, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, ExternSync, Flags, ExtendedFlag, Member, Struct,
     Constant, FormatComponent, FormatPlane, Format, FeatureRequirement,
@@ -23,7 +23,6 @@ from generator import OutputGenerator, GeneratorOptions, write
 from vkconventions import VulkanConventions, VulkanSCConventions, VulkanBaseConventions
 from reg import Registry
 from xml.etree import ElementTree
-
 
 def getConventionsForApi(api_name):
     """Return the appropriate conventions object for the given API name."""
@@ -1048,7 +1047,17 @@ class BaseGenerator(OutputGenerator):
                 for comment in member.findall('comment'):
                     member.remove(comment)
 
-                name = textIfFind(member, 'name')
+                nameElem = member.find('name')
+                name = nameElem.text if nameElem is not None else None
+                raw_alias = nameElem.get('alias') if nameElem is not None else None
+                capabilityAlias = None
+                if raw_alias:
+                    if "::" in raw_alias:
+                        struct_part, member_part = raw_alias.split("::")
+                        capabilityAlias = StructCapabilityAlias(struct_part, member_part)
+                    else:
+                        capabilityAlias = ExtensionCapabilityAlias(raw_alias)
+                
                 type = textIfFind(member, 'type')
                 sType = member.get('values') if member.get('values') is not None else sType
                 noautovalidity = boolGet(member, 'noautovalidity')
@@ -1099,7 +1108,7 @@ class BaseGenerator(OutputGenerator):
                 optional = len(optionalValues) > 0 and optionalValues[0].lower() == "true"
                 optionalPointer = len(optionalValues) > 1 and optionalValues[1].lower() == "true"
 
-                members.append(Member(name, type, fullType, noautovalidity, limittype,
+                members.append(Member(name, capabilityAlias, type, fullType, noautovalidity, limittype,
                                       const, length, nullTerminated, pointer, fixedSizeArray,
                                       extendedFlag, optional, optionalPointer,
                                       externSync, cdecl, bitFieldWidth, selector, selections))

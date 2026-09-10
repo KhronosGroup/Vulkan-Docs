@@ -187,6 +187,19 @@ structure, pname:usage is ignored, and the effective usage flags are defined
 by slink:VkBufferUsageFlags2CreateInfo::pname:usage.
 endif::VK_BASE_VERSION_1_4,VK_KHR_maintenance5,VK_KHR_extended_flags[]
 
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+If slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE is included in the
+pname:pNext chain, and a sparse buffer is being created, the alignment for
+buffer device addresses can: be controlled.
+For non-sparse buffers, alignment requirements are specified at device
+memory allocation time in flink:vkAllocateMemory instead.
+For implementations which allocate buffer device addresses regardless at
+buffer create time, the implementation is expected to allocate buffer device
+addresses with alignment equal to
+<<limits-maxBufferDeviceAddressAllocationAlignment,pname:maxBufferDeviceAddressAllocationAlignment>>,
+effectively ignoring any application-requested alignment.
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
+
 .Valid Usage
 ****
 include::{chapters}/commonvalidity/buffer_usage_flags_common.adoc[]
@@ -484,6 +497,24 @@ ifdef::VK_EXT_descriptor_heap[]
     ename:VK_BUFFER_CREATE_SPARSE_RESIDENCY_BIT, or
     ename:VK_BUFFER_CREATE_SPARSE_ALIASED_BIT flags
 endif::VK_EXT_descriptor_heap[]
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+  * [[VUID-VkBufferCreateInfo-flags-12515]]
+    If pname:flags does not include
+    ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT,
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    must: be 0
+  * [[VUID-VkBufferCreateInfo-alignment-12516]]
+    If
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    is not 0, the <<resources-effective-buffer-usage, effective usage
+    flags>> must: include ename:VK_BUFFER_USAGE_2_SHADER_DEVICE_ADDRESS_BIT
+  * [[VUID-VkBufferCreateInfo-alignment-12517]]
+    If
+    slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment
+    is not 0,
+    slink:VkBufferOpaqueCaptureAddressCreateInfo::pname:opaqueCaptureAddress
+    must: be 0
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
 ****
 ifdef::VKSC_VERSION_1_0[]
 ifdef::hidden[]
@@ -1471,6 +1502,22 @@ The returned address must: satisfy the alignment requirement specified by
 slink:VkMemoryRequirements::pname:alignment for the buffer in
 slink:VkBufferDeviceAddressInfo::pname:buffer.
 
+ifdef::VK_VALVE_buffer_device_address_allocation_alignment[]
+If the buffer was created without ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT,
+and the bound slink:VkDeviceMemory was created with specified non-zero
+alignment of
+slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment,
+either the returned address minus
+slink:VkBindBufferMemoryInfo::pname:memoryOffset or equivalent
+flink:vkBindBufferMemory offset must: satisfy that alignment requirement, or
+the returned address must: satisfy that alignment requirement.
+
+If the buffer was created with ename:VK_BUFFER_CREATE_SPARSE_BINDING_BIT,
+and the buffer was created with non-zero
+slink:VkBufferDeviceAddressAlignmentAllocateInfoVALVE::pname:alignment, the
+returned address must: satisfy that alignment requirement.
+endif::VK_VALVE_buffer_device_address_allocation_alignment[]
+
 If multiple slink:VkBuffer objects are bound to overlapping ranges of
 slink:VkDeviceMemory, implementations may: return address ranges which
 overlap.
@@ -1959,10 +2006,7 @@ ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
   ** If pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL, and if the
      pname:pNext chain includes a slink:VkExternalFormatANDROID structure
      with non-zero pname:externalFormat, then
-     pname:imageCreateFormatFeatures is the value of
-     slink:VkAndroidHardwareBufferFormatPropertiesANDROID::pname:formatFeatures
-     obtained by flink:vkGetAndroidHardwareBufferPropertiesANDROID with a
-     matching pname:externalFormat value.
+     pname:imageCreateFormatFeatures is empty.
 endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 ifdef::VK_QNX_external_memory_screen_buffer[]
   ** If pname:tiling is ename:VK_IMAGE_TILING_OPTIMAL, and if the
@@ -2548,9 +2592,12 @@ ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
     must: also contain ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
 endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-VkImageCreateInfo-initialLayout-00993]]
-    pname:initialLayout must: be ename:VK_IMAGE_LAYOUT_UNDEFINED or
-ifdef::VK_EXT_zero_initialize_device_memory[ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT or]
-    ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+    pname:initialLayout must: be ename:VK_IMAGE_LAYOUT_UNDEFINED,
+ifdef::VK_EXT_zero_initialize_device_memory[ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT,]
+    or ename:VK_IMAGE_LAYOUT_PREINITIALIZED
+  * [[VUID-VkImageCreateInfo-initialLayout-12478]]
+    If pname:initialLayout is ename:VK_IMAGE_LAYOUT_PREINITIALIZED,
+    pname:tiling must: be ename:VK_IMAGE_TILING_LINEAR
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_external_memory,VK_NV_external_memory[]
   * [[VUID-VkImageCreateInfo-pNext-01443]]
     If the pname:pNext chain includes a
@@ -3115,6 +3162,12 @@ ifdef::VK_ARM_tensors[]
     If pname:tiling is VK_IMAGE_TILING_LINEAR then
     ename:VK_IMAGE_USAGE_TENSOR_ALIASING_BIT_ARM must: not be set in
     pname:usage
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+  * [[VUID-VkImageCreateInfo-pNext-12503]]
+    If the pname:pNext chain includes a slink:VkExternalFormatANDROID
+    structure with non-zero pname:externalFormat, pname:usage must: not
+    include ename:VK_IMAGE_USAGE_TENSOR_ALIASING_BIT_ARM
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
 endif::VK_ARM_tensors[]
 ifdef::VK_KHR_maintenance11[]
   * [[VUID-VkImageCreateInfo-flags-13355]]
@@ -3151,6 +3204,13 @@ ifdef::VK_EXT_descriptor_heap[]
     to <<limits-imageCaptureReplayOpaqueDataSize,
     pname:imageCaptureReplayOpaqueDataSize>>
 endif::VK_EXT_descriptor_heap[]
+ifdef::VK_EXT_image_tiling_control+VK_EXT_image_drm_format_modifier[]
+  * [[VUID-VkImageCreateInfo-pNext-12480]]
+    If the pname:pNext chain includes a
+    slink:VkImageTilingControlCreateInfoEXT structure, then the pname:pNext
+    chain must: not include a
+    slink:VkImageDrmFormatModifierExplicitCreateInfoEXT structure
+endif::VK_EXT_image_tiling_control+VK_EXT_image_drm_format_modifier[]
 ifdef::VK_KHR_extended_flags[]
   * [[VUID-VkImageCreateInfo-pNext-12442]]
     pname:pNext must: contain at most one of the structures
@@ -3774,7 +3834,13 @@ If the pname:pNext chain of slink:VkImageCreateInfo includes a
 slink:VkImageDrmFormatModifierListCreateInfoEXT structure, then the image
 will be created with one of the <<glossary-drm-format-modifier,Linux DRM
 format modifiers>> listed in the structure.
-The choice of modifier is implementation-dependent.
+The choice of modifier
+ifdef::VK_EXT_image_tiling_control[]
+can: be influenced by also including a
+slink:VkImageTilingControlCreateInfoEXT structure in the pname:pNext chain,
+but otherwise, it
+endif::VK_EXT_image_tiling_control[]
+is implementation-dependent.
 
 The slink:VkImageDrmFormatModifierListCreateInfoEXT structure is defined as:
 
@@ -4154,6 +4220,78 @@ include::{generated}/validity/structs/VkImageAlignmentControlCreateInfoMESA.adoc
 --
 endif::VK_MESA_image_alignment_control[]
 
+ifdef::VK_EXT_image_tiling_control[]
+[open,refpage='VkImageTilingControlCreateInfoEXT',desc='Specifies additional creation parameters for image tiling',type='structs']
+--
+If the pname:pNext chain of slink:VkImageCreateInfo includes a
+sname:VkImageTilingControlCreateInfoEXT structure, then that structure
+specifies the optimal tiling arrangement for this image.
+
+The sname:VkImageTilingControlCreateInfoEXT structure is defined as:
+
+include::{generated}/api/structs/VkImageTilingControlCreateInfoEXT.adoc[]
+
+  * pname:sType is a elink:VkStructureType value identifying this structure.
+  * pname:pNext is `NULL` or a pointer to a structure extending this
+    structure.
+  * pname:imageTiling is a elink:VkImageTilingControlEXT value specifying
+    the optimal tiling arrangement for the image.
+
+.Valid Usage
+****
+  * [[VUID-VkImageTilingControlCreateInfoEXT-imageTiling-12481]]
+    If sname:VkImageTilingControlCreateInfoEXT::pname:imageTiling is not
+    ename:VK_IMAGE_TILING_CONTROL_DEFAULT_EXT, the
+    <<features-imageTilingControl, pname:imageTilingControl>> feature must:
+    be enabled
+  * [[VUID-VkImageTilingControlCreateInfoEXT-imageTiling-12479]]
+    If sname:VkImageTilingControlCreateInfoEXT::pname:imageTiling is not
+    ename:VK_IMAGE_TILING_CONTROL_DEFAULT_EXT,
+    slink:VkImageCreateInfo::pname:tiling must: not be
+    ename:VK_IMAGE_TILING_LINEAR
+****
+
+include::{generated}/validity/structs/VkImageTilingControlCreateInfoEXT.adoc[]
+--
+
+[open,refpage='VkImageTilingControlEXT',desc='Specifies image tiling arrangement',type='enums']
+--
+Possible values of
+slink:VkImageTilingControlCreateInfoEXT::pname:imageTiling, specifying image
+tiling arrangement, are:
+
+include::{generated}/api/enums/VkImageTilingControlEXT.adoc[]
+
+  * ename:VK_IMAGE_TILING_CONTROL_DEFAULT_EXT specifies that the image
+    tiling arrangement balances memory size requirements and memory access
+    performance.
+    It is the same selection as with the
+    slink:VkImageTilingControlCreateInfoEXT structure omitted from the
+    pname:pNext chain of slink:VkImageCreateInfo.
+  * ename:VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT specifies that the image
+    tiling arrangement minimizes memory size requirements with reduced
+    consideration for memory access performance.
+  * ename:VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT specifies that the
+    image tiling arrangement maximizes memory access performance with
+    reduced consideration for increases in memory size requirements.
+
+These enumeration values only select the preferred tiling arrangement out of
+the subset that the implementation supports, which is dependent on the other
+image creation parameters.
+
+There are cases where multiple enumeration values will result in the same
+tiling arrangement, especially for images with extents that are multiples of
+optimal tiling block sizes.
+For these cases, no tradeoff exists for the image.
+
+The memory size requirements of the image are less than or equal when using
+ename:VK_IMAGE_TILING_CONTROL_MIN_SIZE_EXT.
+However, there are no performance guarantees when using
+ename:VK_IMAGE_TILING_CONTROL_MAX_PERFORMANCE_EXT as image access times are
+dependent on other variables such as the shader access pattern.
+--
+endif::VK_EXT_image_tiling_control[]
+
 ifdef::VK_KHR_extended_flags[]
 [open,refpage='VkImageUsageFlagBits2KHR',desc='Bitmask specifying intended use of an image',type='enums']
 --
@@ -4387,8 +4525,8 @@ ifdef::VK_EXT_attachment_feedback_loop_layout[]
 endif::VK_EXT_attachment_feedback_loop_layout[]
 ifdef::VK_QCOM_image_processing[]
   * ename:VK_IMAGE_USAGE_SAMPLE_WEIGHT_BIT_QCOM specifies that the image
-    can: be used in <<textures-weightimage,weight image sampling
-    operations>>.
+    can: be used as a weight image in <<textures-weightimage,weight image
+    sampling operations>>.
   * ename:VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM specifies that the
     image can: be used in <<textures-blockmatch,block matching operations>>.
 endif::VK_QCOM_image_processing[]
@@ -5836,12 +5974,13 @@ implementations.
 Upon creation, all image subresources of an image are initially in the same
 layout, where that layout is selected by the
 sname:VkImageCreateInfo::pname:initialLayout member.
-The pname:initialLayout must: be either ename:VK_IMAGE_LAYOUT_UNDEFINED or
-ifdef::VK_EXT_zero_initialize_device_memory[ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT or]
-ename:VK_IMAGE_LAYOUT_PREINITIALIZED.
-If it is ename:VK_IMAGE_LAYOUT_PREINITIALIZED, then the image data can: be
-preinitialized by the host while using this layout, and the transition away
-from this layout will preserve that data.
+The pname:initialLayout must: be either ename:VK_IMAGE_LAYOUT_UNDEFINED,
+ifdef::VK_EXT_zero_initialize_device_memory[ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT,]
+or ename:VK_IMAGE_LAYOUT_PREINITIALIZED.
+If it is ename:VK_IMAGE_LAYOUT_PREINITIALIZED and the image has linear
+tiling, then the image data can: be preinitialized by the host while using
+this layout, and the transition away from this layout will preserve that
+data.
 ifdef::VK_EXT_zero_initialize_device_memory[]
 If it is ename:VK_IMAGE_LAYOUT_ZERO_INITIALIZED_EXT, then the image data is
 interpreted to be zeroed.
@@ -5882,19 +6021,17 @@ The type(s) of device access supported by each layout are:
     This layout can: be used in place of the current image layout in a
     layout transition, but doing so will cause the contents of the image's
     memory to be undefined:.
-  * ename:VK_IMAGE_LAYOUT_PREINITIALIZED specifies that an image's memory is
-    in a defined layout and can: be populated by data, but that it has not
-    yet been initialized by the driver.
+  * ename:VK_IMAGE_LAYOUT_PREINITIALIZED specifies that a linear image's
+    memory is in a defined layout and can: be populated by data, but that it
+    has not yet been initialized by the driver.
     Image memory cannot: be transitioned into this layout.
     This layout can: be used as the pname:initialLayout member of
-    slink:VkImageCreateInfo.
+    slink:VkImageCreateInfo when pname:tiling is
+    ename:VK_IMAGE_TILING_LINEAR.
     This layout is intended to be used as the initial layout for an image
     whose contents are written by the host, and hence the data can: be
     written to memory immediately, without first executing a layout
     transition.
-    Currently, ename:VK_IMAGE_LAYOUT_PREINITIALIZED is only useful with
-    <<glossary-linear-resource,linear>> images because there is not a
-    standard layout defined for ename:VK_IMAGE_TILING_OPTIMAL images.
   * ename:VK_IMAGE_LAYOUT_GENERAL supports all types of device access,
     unless specified otherwise.
 ifdef::VK_EXT_zero_initialize_device_memory[]
@@ -6352,12 +6489,6 @@ include::{chapters}/commonvalidity/memory_reservation_request_count_common.adoc[
     slink:VkDeviceObjectReservationCreateInfo::pname:layeredImageViewRequestCount
     specified when pname:device was created
 endif::VKSC_VERSION_1_0[]
-ifdef::VK_KHR_extended_flags[]
-  * [[VUID-vkCreateImageView-pNext-12444]]
-    The pname:pNext chain of pname:pCreateInfo must: contain at most one of
-    the structures slink:VkImageViewUsageCreateInfo and
-    slink:VkImageViewUsage2CreateInfoKHR
-endif::VK_KHR_extended_flags[]
 ****
 
 include::{generated}/validity/protos/vkCreateImageView.adoc[]
@@ -6421,43 +6552,34 @@ If pname:image is a 3D image, its Z range can: be restricted to a subset by
 adding a slink:VkImageViewSlicedCreateInfoEXT to the pname:pNext chain.
 endif::VK_EXT_image_sliced_view_of_3d[]
 
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-If pname:image's format is <<formats-multiplanar, multi-planar>> and
-pname:aspectMask is one of ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
-ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or ename:VK_IMAGE_ASPECT_PLANE_2_BIT, the
-_view format_ is the <<formats-compatible-planes, compatible format for the
-plane>>.
-Otherwise the
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[The]
-_view format_ is the pname:format used to create pname:image.
+If pname:image was not created with
+ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, pname:format must: equal the
+pname:format used to create pname:image.
 
-If pname:image was created with the ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT
-flag, pname:format can: be set to a <<formats-compatibility-classes, format
-that is compatible>> with the _view format_.
-If the image was not created with ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
-pname:format must: equal the _view format_.
+If pname:image was created with ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
+pname:format can: be set to a different format as follows:
 
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
+  * If pname:image was created with the
+    ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT flag and
+    pname:format is an uncompressed format, it must: be
+    <<formats-size-compatibility, _size-compatible_>> with the pname:format
+    used to create pname:image.
+endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-When creating a single-plane view of a <<formats-multiplanar, multi-planar
-image>>, pname:width and pname:height must: be derived from the multi-planar
-image's dimensions in the manner listed for
-<<formats-compatible-planes,plane compatibility>> for the plane.
+  * If creating a <<image-views-plane-view,single-plane view>>, pname:format
+    must: equal one of the <<image-views-plane-view, _plane view formats_>>.
+  * If creating a <<image-views-multi-plane-view,multi-plane view>>,
+    pname:format must: equal the pname:format used to create pname:image.
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+  * {empty}
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[Otherwise,]
+    pname:format must: be <<formats-compatibility-classes, compatible>> with
+    the pname:format of pname:image.
 
 Views of compatible formats will have the same mapping between texel
 coordinates and memory locations irrespective of the pname:format, with only
 the interpretation of the bit pattern changing.
-
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-[[image-views-plane-promotion]]
-If pname:image was created with a <<formats-multiplanar, multi-planar
-format>>, and the image view's pname:aspectMask is one of
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT or
-ename:VK_IMAGE_ASPECT_PLANE_2_BIT, the view's aspect mask is considered to
-be equivalent to ename:VK_IMAGE_ASPECT_COLOR_BIT when used as a framebuffer
-attachment.
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 [NOTE]
 ====
@@ -6472,16 +6594,53 @@ as described in <<fundamentals-fixedfpconv,Conversion from Normalized
 Fixed-Point to Floating-Point>>.
 ====
 
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[]
+The texel dimensions of the view are derived as follows:
+
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-If pname:image was created with the
-ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT flag, pname:format
-must: be _compatible_ with the image's format as described above; or must:
-be an uncompressed format, in which case it must: be
-<<formats-size-compatibility, _size-compatible_>> with the image's format.
-In this case, the resulting image view's texel dimensions equal the
-dimensions of the selected mip level divided by the compressed texel block
-size and rounded up.
+  * If pname:image was created with the
+    ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT flag and
+    pname:format is an uncompressed format, the dimensions equal the
+    dimensions of the selected mip level divided by the compressed texel
+    block size and rounded up.
 endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+  * If creating a <<image-views-plane-view,single-plane view>>, the
+    dimensions equal the <<image-views-plane-view, _plane view
+    dimensions_>>.
+endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+  * Otherwise, the dimensions are equal to the dimensions of the selected
+    mip level as defined in <<resources-image-mip-level-sizing,Image Mip
+    Level Sizing>>
+endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2,VK_KHR_sampler_ycbcr_conversion[]
+
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+[[image-views-plane-view]]
+If pname:subresourceRange.aspectMask is one of the
+<<formats-multiplanar-image-aspect,multi-planar aspect mask>> bits, a
+single-plane image view will be created.
+The pname:image of a single-plane view must: have been created with a
+<<formats-multiplanar, multi-planar format>> and the
+ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT create flag.
+
+The set of _plane view formats_ for the plane is the
+<<formats-compatible-planes, compatible plane format>> and the formats
+<<formats-compatibility-classes, compatible>> with it.
+
+The _plane view dimensions_ are derived from the dimensions of the
+pname:image in the manner listed for <<formats-compatible-planes,plane
+compatibility>> for the plane.
+
+[[image-views-plane-promotion]]
+The plane view's aspect mask is considered to be equivalent to
+ename:VK_IMAGE_ASPECT_COLOR_BIT when used as a framebuffer attachment.
+
+[[image-views-multi-plane-view]]
+If the pname:format of the pname:image is a
+<<formats-multiplanar,multi-planar format>> and
+pname:subresourceRange.aspectMask is equal to
+ename:VK_IMAGE_ASPECT_COLOR_BIT, a multi-plane image view will be created.
+endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 
 ifdef::VK_COMPUTE_VERSION_1_0[]
 The slink:VkComponentMapping pname:components member describes a remapping
@@ -6501,7 +6660,8 @@ endif::VK_COMPUTE_VERSION_1_0[]
 
 ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 Image views with <<formats-requiring-sampler-ycbcr-conversion, formats that
-require YC~B~C~R~ conversion>>
+require YC~B~C~R~ conversion>> and pname:usage containing
+ename:VK_IMAGE_USAGE_SAMPLED_BIT
 ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
 or <<memory-external-android-hardware-buffer-external-formats, external
 formats>>
@@ -6705,6 +6865,11 @@ endif::VK_NV_linear_color_attachment[]
     the pname:mipLevels specified in slink:VkImageCreateInfo when
     pname:image was created
 ifdef::VK_EXT_fragment_density_map[]
+  * [[VUID-VkImageViewCreateInfo-usage-12488]]
+    If pname:usage contains
+    ename:VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_2_FRAGMENT_DENSITY_MAP_BIT_EXT
   * [[VUID-VkImageViewCreateInfo-image-02571]]
     If pname:image was created with the
     ename:VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT usage flag set,
@@ -6786,64 +6951,20 @@ endif::VK_EXT_image_2d_view_of_3d[]
     the formula defined in <<resources-image-mip-level-sizing,Image Mip
     Level Sizing>>
 endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance1[]
-// The VU below comes in 4 alternate versions
-// both disabled, both enabled, maintenance2 only, ycbcr only
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageViewCreateInfo-image-01018]]
-    If pname:image was created with the
-    ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, pname:format must: be
-    compatible with the pname:format used to create pname:image, as defined
-    in <<formats-compatibility-classes,Format Compatibility Classes>>
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-// The nested ifdefs are there in anticipation of the hoped-for day when the
-// VU extractor and validation layers can handle VU with imbedded
-// conditionals. They are commented out until then.
-//
-// If VK_BASE_VERSION_1_1,VK_KHR_maintenance2 and NOT VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageViewCreateInfo-image-01759]]
-    If pname:image was created with the
-    ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, but without the
-    ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT flag, pname:format
-    must: be compatible with the pname:format used to create pname:image, as
-    defined in <<formats-compatibility-classes,Format Compatibility
-    Classes>>
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-// If NOT VK_BASE_VERSION_1_1,VK_KHR_maintenance2 and VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageViewCreateInfo-image-01760]]
-    If pname:image was created with the
-    ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, and if the pname:format
-    of the pname:image is not a <<formats-multiplanar, multi-planar
-    format>>, pname:format must: be compatible with the pname:format used to
-    create pname:image, as defined in <<formats-compatibility-classes,Format
-    Compatibility Classes>>
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-// If VK_BASE_VERSION_1_1,VK_KHR_maintenance2 and VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageViewCreateInfo-image-01761]]
     If pname:image was created with the
     ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag,
-// ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
     but without the ename:VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT
     flag,
-// endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
-// ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-    and if the pname:format of the pname:image is not a
-    <<formats-multiplanar, multi-planar format>>,
-// endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+    and a <<image-views-plane-view,single-plane view>> and a
+    <<image-views-multi-plane-view,multi-plane view>> is not being created,
+endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
     pname:format must: be compatible with the pname:format used to create
     pname:image, as defined in <<formats-compatibility-classes,Format
     Compatibility Classes>>
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance2[]
   * [[VUID-VkImageViewCreateInfo-image-01583]]
     If pname:image was created with the
@@ -6876,39 +6997,25 @@ ifdef::VK_BASE_VERSION_1_2,VK_KHR_image_format_list[]
     then pname:format must: be one of the formats in
     slink:VkImageFormatListCreateInfo::pname:pViewFormats
 endif::VK_BASE_VERSION_1_2,VK_KHR_image_format_list[]
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-  * [[VUID-VkImageViewCreateInfo-image-01586]]
-    If pname:image was created with the
-    ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, if the pname:format of
-    the pname:image is a <<formats-multiplanar, multi-planar format>>, and
-    if pname:subresourceRange.aspectMask is one of the
-    <<formats-multiplanar-image-aspect,multi-planar aspect mask>> bits, then
-    pname:format must: be compatible with the elink:VkFormat for the plane
-    of the pname:image pname:format indicated by
-    pname:subresourceRange.aspectMask, as defined in
-    <<formats-compatible-planes>>
-  * [[VUID-VkImageViewCreateInfo-subresourceRange-07818]]
-    pname:subresourceRange.aspectMask must: only have at most 1 valid
-    <<formats-multiplanar-image-aspect,multi-planar aspect mask>> bit
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-// The VU below comes in an alternate version when the extension is
-// enabled.
-  * [[VUID-VkImageViewCreateInfo-image-01019]]
-    If pname:image was not created with the
-    ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, pname:format must: be
-    identical to the pname:format used to create pname:image
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageViewCreateInfo-image-12397]]
     If pname:image was not created with the
     ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag pname:format must: be
     identical to the pname:format used to create pname:image
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+  * [[VUID-VkImageViewCreateInfo-image-01586]]
+    If creating a <<image-views-plane-view,single-plane view>>, pname:format
+    must: be compatible with the elink:VkFormat for the plane of the
+    pname:image pname:format indicated by pname:subresourceRange.aspectMask,
+    as defined in <<formats-compatible-planes>>
+  * [[VUID-VkImageViewCreateInfo-subresourceRange-07818]]
+    pname:subresourceRange.aspectMask must: only have at most 1 valid
+    <<formats-multiplanar-image-aspect,multi-planar aspect mask>> bit
+endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageViewCreateInfo-format-12398]]
-    If the pname:format of the pname:image is a <<formats-multiplanar,
-    multi-planar format>> and pname:subresourceRange.aspectMask is
-    ename:VK_IMAGE_ASPECT_COLOR_BIT, pname:format must: be identical to the
-    pname:format used to create pname:image
+    If creating a <<image-views-multi-plane-view,multi-plane view>>,
+    pname:format must: be identical to the pname:format used to create
+    pname:image
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ifdef::VK_GRAPHICS_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageViewCreateInfo-format-06415]]
@@ -7217,6 +7324,15 @@ ifdef::VK_EXT_metal_objects[]
     ename:VK_EXPORT_METAL_OBJECT_TYPE_METAL_TEXTURE_BIT_EXT
 endif::VK_EXT_metal_objects[]
 ifdef::VK_QCOM_image_processing[]
+  * [[VUID-VkImageViewCreateInfo-usage-12506]]
+    If pname:usage contains ename:VK_IMAGE_USAGE_SAMPLE_WEIGHT_BIT_QCOM,
+    then the image view's <<resources-image-view-format-features,format
+    features>> must: contain ename:VK_FORMAT_FEATURE_2_WEIGHT_IMAGE_BIT_QCOM
+  * [[VUID-VkImageViewCreateInfo-usage-12507]]
+    If pname:usage contains
+    ename:VK_IMAGE_USAGE_SAMPLE_BLOCK_MATCH_BIT_QCOM, then the image view's
+    <<resources-image-view-format-features,format features>> must: contain
+    ename:VK_FORMAT_FEATURE_2_BLOCK_MATCHING_BIT_QCOM
   * [[VUID-VkImageViewCreateInfo-pNext-06944]]
     If the pname:pNext chain includes
     slink:VkImageViewSampleWeightCreateInfoQCOM structure, then
@@ -7294,8 +7410,8 @@ ifdef::VK_QCOM_image_processing[]
     sname:VkPhysicalDeviceImageProcessingPropertiesQCOM::pname:maxWeightFilterDimension.height>>
 endif::VK_QCOM_image_processing[]
   * [[VUID-VkImageViewCreateInfo-subresourceRange-09594]]
-    pname:subresourceRange.aspectMask must: be valid for the pname:format
-    the pname:image was created with
+    pname:subresourceRange.aspectMask must: <<resources-valid-aspect-mask,be
+    valid>> for the pname:format the pname:image was created with
 ifdef::VK_KHR_maintenance11[]
   * [[VUID-VkImageViewCreateInfo-image-13357]]
     If pname:image was created with
@@ -7313,6 +7429,12 @@ ifdef::VK_BASE_VERSION_1_3[Vulkan 1.3 is not supported and]
     ename:VK_FORMAT_G12X4_B12X4R12X4_2PLANE_444_UNORM_3PACK16, or
     ename:VK_FORMAT_G16_B16R16_2PLANE_444_UNORM
 endif::VK_EXT_ycbcr_2plane_444_formats[]
+ifdef::VK_KHR_extended_flags[]
+  * [[VUID-VkImageViewCreateInfo-pNext-12508]]
+    The pname:pNext chain must: contain at most one of the
+    slink:VkImageViewUsageCreateInfo and
+    slink:VkImageViewUsage2CreateInfoKHR structures
+endif::VK_KHR_extended_flags[]
 ****
 
 include::{generated}/validity/structs/VkImageViewCreateInfo.adoc[]
@@ -7523,20 +7645,40 @@ If the number of layers in the view, whether set explicitly in
 pname:layerCount or implied by ename:VK_REMAINING_ARRAY_LAYERS, is not a
 multiple of 6, the last cube map in the array must: not be accessed.
 
+[[resources-valid-aspect-mask]]
 pname:aspectMask must: be only ename:VK_IMAGE_ASPECT_COLOR_BIT,
 ename:VK_IMAGE_ASPECT_DEPTH_BIT or ename:VK_IMAGE_ASPECT_STENCIL_BIT if
-pname:format is a color, depth-only or stencil-only format,
-ifndef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-respectively.
-endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+pname:format is a color, depth-only or stencil-only format, respectively.
+
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-respectively, except if pname:format is a <<formats-multiplanar,
-multi-planar format>>.
+When creating a slink:VkImageView, if pname:image was created with
+ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, and the image pname:format is a
+<<formats-multiplanar, multi-planar format>>, then pname:aspectMask can: be
+set to one of the <<formats-multiplanar-image-aspect,multi-planar aspect>>
+bits.
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
+
+ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
+When creating a slink:VkImageView, if pname:image was created with an
+<<memory-external-android-hardware-buffer-external-formats,Android hardware
+buffer external format>>, then pname:aspectMask must: equal
+ename:VK_IMAGE_ASPECT_COLOR_BIT.
+endif::VK_ANDROID_external_memory_android_hardware_buffer[]
+
 If using a depth/stencil format with both depth and stencil components,
 pname:aspectMask must: include at least one of
 ename:VK_IMAGE_ASPECT_DEPTH_BIT and ename:VK_IMAGE_ASPECT_STENCIL_BIT, and
 can: include both.
+
+When creating an image view of a depth/stencil image to be used as a
+<<descriptors,descriptor>> (e.g. for sampling in the shader, or for use as
+an input attachment), the pname:aspectMask must: only include one bit, which
+selects whether the image view is used for depth reads (i.e. using a
+floating-point sampler or input attachment in the shader) or stencil reads
+(i.e. using an unsigned integer sampler or input attachment in the shader).
+When an image view of a depth/stencil image is used as a depth/stencil
+framebuffer attachment, the pname:aspectMask is ignored and both depth and
+stencil image subresources are used.
 
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_maintenance1[]
 When the sname:VkImageSubresourceRange structure is used to select a subset
@@ -7558,31 +7700,6 @@ pass instance still apply to the entire subresource referenced which
 includes all the slices of the selected mip level.
 endif::VK_BASE_VERSION_1_1,VK_KHR_maintenance1[]
 
-When using an image view of a depth/stencil image to populate a descriptor
-set (e.g. for sampling in the shader, or for use as an input attachment),
-the pname:aspectMask must: only include one bit, which selects whether the
-image view is used for depth reads (i.e. using a floating-point sampler or
-input attachment in the shader) or stencil reads (i.e. using an unsigned
-integer sampler or input attachment in the shader).
-When an image view of a depth/stencil image is used as a depth/stencil
-framebuffer attachment, the pname:aspectMask is ignored and both depth and
-stencil image subresources are used.
-
-ifdef::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-When creating a sname:VkImageView, if <<samplers-YCbCr-conversion,sampler
-{YCbCr} conversion>> is enabled in the sampler, the pname:aspectMask of a
-pname:subresourceRange used by the sname:VkImageView must: be
-ename:VK_IMAGE_ASPECT_COLOR_BIT.
-
-When creating a sname:VkImageView, if sampler {YCbCr} conversion is not
-enabled in the sampler and the image pname:format is <<formats-multiplanar,
-multi-planar format>>, the image must: have been created with
-ename:VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, and the pname:aspectMask of the
-sname:VkImageView's pname:subresourceRange must: be
-ename:VK_IMAGE_ASPECT_PLANE_0_BIT, ename:VK_IMAGE_ASPECT_PLANE_1_BIT or
-ename:VK_IMAGE_ASPECT_PLANE_2_BIT.
-endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
-
 .Valid Usage
 ****
   * [[VUID-VkImageSubresourceRange-levelCount-01720]]
@@ -7594,8 +7711,8 @@ endif::VK_COMPUTE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ifdef::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
   * [[VUID-VkImageSubresourceRange-aspectMask-01670]]
     If pname:aspectMask includes ename:VK_IMAGE_ASPECT_COLOR_BIT, then it
-    must: not include any of ename:VK_IMAGE_ASPECT_PLANE_0_BIT,
-    ename:VK_IMAGE_ASPECT_PLANE_1_BIT, or ename:VK_IMAGE_ASPECT_PLANE_2_BIT
+    must: not include any of the
+    <<formats-multiplanar-image-aspect,multi-planar aspect mask>> bits
 endif::VK_BASE_VERSION_1_1,VK_KHR_sampler_ycbcr_conversion[]
 ifdef::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkImageSubresourceRange-aspectMask-02278]]
@@ -10489,7 +10606,13 @@ ifdef::VK_BASE_VERSION_1_3,VK_KHR_maintenance4[]
     objects created with the same combination of values for the pname:flags,
     pname:imageType, pname:format, pname:extent, pname:mipLevels,
     pname:arrayLayers, pname:samples, pname:tiling and pname:usage members
-    in the slink:VkImageCreateInfo structure passed to flink:vkCreateImage.
+    in the slink:VkImageCreateInfo structure
+ifdef::VK_EXT_image_tiling_control[]
+    , and the pname:imageTiling member of the
+    slink:VkImageTilingControlCreateInfoEXT structure if in the pname:pNext
+    chain,
+endif::VK_EXT_image_tiling_control[]
+    passed to flink:vkCreateImage.
 endif::VK_BASE_VERSION_1_3,VK_KHR_maintenance4[]
   * The pname:alignment member satisfies the buffer descriptor offset
     alignment requirements associated with the sname:VkBuffer's pname:usage:
@@ -10870,9 +10993,9 @@ ifdef::VK_KHR_swapchain[]
     slink:VkImageSwapchainCreateInfoKHR structure
 endif::VK_KHR_swapchain[]
 ifdef::VK_EXT_image_drm_format_modifier[]
-  * [[VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06776]]
-    The pname:pCreateInfo->pNext chain must: not contain a
-    slink:VkImageDrmFormatModifierExplicitCreateInfoEXT structure
+  * [[VUID-VkDeviceImageMemoryRequirements-pCreateInfo-12489]]
+    pname:pCreateInfo->tiling must: not be
+    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT
 endif::VK_EXT_image_drm_format_modifier[]
 ifdef::VK_ANDROID_external_memory_android_hardware_buffer[]
 ifdef::VK_BASE_VERSION_1_3,VK_KHR_maintenance4[]
@@ -10901,24 +11024,9 @@ endif::VK_QNX_external_memory_screen_buffer[]
     and if the pname:pCreateInfo->tiling is ename:VK_IMAGE_TILING_LINEAR or
     ename:VK_IMAGE_TILING_OPTIMAL, then pname:planeAspect must: be a single
     valid <<formats-multiplanar-image-aspect,multi-planar aspect mask>> bit
-ifdef::VK_EXT_image_drm_format_modifier[]
-  * [[VUID-VkDeviceImageMemoryRequirements-pCreateInfo-06420]]
-    If pname:pCreateInfo->tiling is
-    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT, then pname:planeAspect
-    must: be a single valid _memory plane_ for the image (that is,
-    pname:aspectMask must: specify a plane index that is less than the
-    slink:VkDrmFormatModifierPropertiesEXT::pname:drmFormatModifierPlaneCount
-    associated with the image's pname:format and
-    slink:VkImageDrmFormatModifierPropertiesEXT::pname:drmFormatModifier)
-endif::VK_EXT_image_drm_format_modifier[]
   * [[VUID-VkDeviceImageMemoryRequirements-planeAspect-12399]]
-    If pname:planeAspect is not 0,
-ifdef::VK_EXT_image_drm_format_modifier[]
-    pname:pCreateInfo->tiling is not
-    ename:VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
-endif::VK_EXT_image_drm_format_modifier[]
-    and pname:pCreateInfo->flags does not have
-    ename:VK_IMAGE_CREATE_DISJOINT_BIT set, pname:planeAspect must be a
+    If pname:planeAspect is not 0 and pname:pCreateInfo->flags does not have
+    ename:VK_IMAGE_CREATE_DISJOINT_BIT set, then pname:planeAspect must be a
     valid ename:VkImageAspectFlagBits value
 ****
 

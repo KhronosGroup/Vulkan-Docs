@@ -163,11 +163,11 @@ class MyGenerator(BaseGenerator):
             for constant in self.vk.videoStd.constants.values():
                 assert isinstance(constant, Constant)
 
-def testVulkanObject(tmp_path):
-    SetOutputDirectory(tmp_path)
-    SetOutputFileName("test_vulkan_object_out.txt")
-    SetTargetApiName('vulkan')
-    SetMergedApiNames(None)
+def initVulkanObject(output_dir: str, output_file: str, target_api: str, merged_api: str|None):
+    SetOutputDirectory(output_dir)
+    SetOutputFileName(output_file)
+    SetTargetApiName(target_api)
+    SetMergedApiNames(merged_api)
 
     generator = MyGenerator()
     base_options = BaseGeneratorOptions()
@@ -177,6 +177,56 @@ def testVulkanObject(tmp_path):
     tree = ElementTree.parse(xml_path)
     reg.loadElementTree(tree)
     reg.apiGen()
+    
+    return generator.vk
+
+# Test VulkanObject initialization
+def testVulkanObject(tmp_path):
+    initVulkanObject(tmp_path, "test_vulkan_object_out.txt", 'vulkan', None)
+
+# Check class Member.alias is stored correctly when Member is from a feature structure
+def testVulkanObjectStructFeatureAliasStore(tmp_path):
+    vk = initVulkanObject(tmp_path, "test_vulkan_object_struct_member_aliases_store.txt", 'vulkan', None)
+
+    struct1 = vk.structs["VkPhysicalDeviceShaderSubgroupRotateFeatures"]
+    member1 = next(m for m in struct1.members if m.name == "shaderSubgroupRotate")
+    assert member1.capabilityAlias is None
+
+    struct2 = vk.structs["VkPhysicalDeviceVulkan14Features"]
+    member2 = next(m for m in struct2.members if m.name == "shaderSubgroupRotate")
+    assert member2.capabilityAlias == StructCapabilityAlias("VkPhysicalDeviceShaderSubgroupRotateFeatures", "shaderSubgroupRotate")
+
+    struct3 = vk.structs["VkPhysicalDeviceVulkan12Features"]
+    member3 = next(m for m in struct3.members if m.name == "subgroupBroadcastDynamicId")
+    assert member3.capabilityAlias is None
+
+    struct4 = vk.structs["VkPhysicalDeviceVulkan12Features"]
+    member4 = next(m for m in struct4.members if m.name == "samplerMirrorClampToEdge")
+    assert member4.capabilityAlias == ExtensionCapabilityAlias("VK_KHR_sampler_mirror_clamp_to_edge")
+
+# Check class Member.alias is stored correctly when Member is from a property structure
+def testVulkanObjectStructPropertyAliasStore(tmp_path):
+    vk = initVulkanObject(tmp_path, "test_vulkan_object_feature_aliases.txt", 'vulkan', None)
+
+    struct1 = vk.structs["VkPhysicalDeviceVertexAttributeDivisorProperties"]
+    member1 = next(m for m in struct1.members if m.name == "maxVertexAttribDivisor")
+    assert member1.capabilityAlias is None
+
+    struct2 = vk.structs["VkPhysicalDeviceVulkan14Properties"]
+    member2 = next(m for m in struct2.members if m.name == "maxVertexAttribDivisor")
+    assert member2.capabilityAlias == StructCapabilityAlias("VkPhysicalDeviceVertexAttributeDivisorProperties", "maxVertexAttribDivisor")
+
+    struct3 = vk.structs["VkPhysicalDeviceVulkan11Properties"]
+    member3 = next(m for m in struct3.members if m.name == "subgroupQuadOperationsInAllStages")
+    assert member3.capabilityAlias == StructCapabilityAlias("VkPhysicalDeviceSubgroupProperties", "quadOperationsInAllStages")
+
+    struct4 = vk.structs["VkPhysicalDeviceSubgroupProperties"]
+    member4 = next(m for m in struct4.members if m.name == "quadOperationsInAllStages")
+    assert member4.capabilityAlias is None
+
+    struct5 = vk.structs["VkPhysicalDeviceVulkan12Properties"]
+    member5 = next(m for m in struct5.members if m.name == "framebufferIntegerColorSampleCounts")
+    assert member5.capabilityAlias is None
 
 def testVulkanObjectWithVideo(tmp_path):
     SetOutputDirectory(tmp_path)
@@ -194,7 +244,6 @@ def testVulkanObjectWithVideo(tmp_path):
     reg.loadElementTree(tree)
 
     reg.apiGen()
-
 
 def testVulkanObjectSC(tmp_path):
     SetOutputDirectory(tmp_path)

@@ -6283,6 +6283,9 @@ endif::VKSC_VERSION_1_0[]
     The <<swapchain-wsi-image-create-info, implied image creation
     parameters>> of the swapchain must: be supported as reported by
     flink:vkGetPhysicalDeviceImageFormatProperties
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
+    or flink:vkGetPhysicalDeviceImageFormatProperties2
+endif::VK_BASE_VERSION_1_1,VK_KHR_get_physical_device_properties2[]
 ifdef::VK_KHR_swapchain_mutable_format[]
   * [[VUID-VkSwapchainCreateInfoKHR-flags-03168]]
     If pname:flags contains ename:VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR
@@ -9029,6 +9032,16 @@ ifdef::VK_NV_low_latency2[]
 [[low-latency2]]
 === Latency Reduction
 
+[NOTE]
+====
+This extension relies on grouping work into a series of
+"`application-rendered frames`".
+This term is used because application-rendered frames do not correspond
+one-to-one with fname:vkQueuePresentKHR calls.
+Technologies such as frame generation can present multiple images for a
+single application-rendered frame.
+====
+
 [open,refpage='vkSetLatencySleepModeNV',desc='Enable or Disable low latency mode on a swapchain',type='protos']
 --
 To enable or disable low latency mode on a swapchain, call:
@@ -9089,8 +9102,8 @@ lower latency rendering, call:
 include::{generated}/api/protos/vkLatencySleepNV.adoc[]
 
   * pname:device is the device associated with pname:swapchain.
-  * pname:swapchain is the swapchain to delay associated CPU work based on
-    slink:VkLatencySubmissionPresentIdNV submissions.
+  * pname:swapchain is the swapchain to delay associated CPU work for, based
+    on the <<low-latency2-frame-attribution,frame attribution>> rules.
   * pname:pSleepInfo is a pointer to a slink:VkLatencySleepInfoNV structure
     specifying the parameters of the latency sleep.
 
@@ -9167,14 +9180,16 @@ include::{generated}/api/structs/VkSetLatencyMarkerInfoNV.adoc[]
   * pname:sType is a elink:VkStructureType value identifying this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:presentID is an application provided value that is used to
-    associate the timestamp with a fname:vkQueuePresentKHR command using
+  * pname:presentID is the application-defined identifier of the
+    application-rendered frame that this marker belongs to.
+    A single application-rendered frame may: correspond to multiple
+    fname:vkQueuePresentKHR calls.
+    It is not related to presentIds passed via
 ifdef::VK_KHR_present_id[]
 ifdef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds or]
-ifndef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds]
+ifndef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds.]
 endif::VK_KHR_present_id[]
-ifdef::VK_KHR_present_id2[slink:VkPresentId2KHR::pname:pPresentIds]
-    for a given present.
+ifdef::VK_KHR_present_id2[slink:VkPresentId2KHR::pname:pPresentIds.]
   * pname:marker is the type of timestamp to be recorded.
 
 include::{generated}/validity/structs/VkSetLatencyMarkerInfoNV.adoc[]
@@ -9201,15 +9216,42 @@ flink:vkSetLatencyMarkerNV in the use cases described below:
   * ename:VK_LATENCY_MARKER_RENDERSUBMIT_END_NV should: be called at the end
     of the render submission execution each frame.
   * ename:VK_LATENCY_MARKER_PRESENT_START_NV should: be called just before
-    fname:vkQueuePresentKHR.
-  * ename:VK_LATENCY_MARKER_PRESENT_END_NV should: be called when
-    fname:vkQueuePresentKHR returns.
+    the fname:vkQueuePresentKHR call requesting presentation of an
+    application-rendered frame.
+  * ename:VK_LATENCY_MARKER_PRESENT_END_NV should: be called when that
+    fname:vkQueuePresentKHR call returns.
+    This may be used to delimit workload submissions between
+    application-rendered frames according to the rules defined in
+    <<low-latency2-frame-attribution>>.
   * ename:VK_LATENCY_MARKER_INPUT_SAMPLE_NV should: be called just before
     the application gathers input data.
   * ename:VK_LATENCY_MARKER_TRIGGER_FLASH_NV should: be called anywhere
     between ename:VK_LATENCY_MARKER_SIMULATION_START_NV and
     ename:VK_LATENCY_MARKER_SIMULATION_END_NV whenever a left mouse click
     occurs.
+
+[NOTE]
+====
+The ename:VK_LATENCY_MARKER_OUT_OF_BAND_RENDERSUBMIT_START_NV,
+ename:VK_LATENCY_MARKER_OUT_OF_BAND_RENDERSUBMIT_END_NV,
+ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_START_NV, and
+ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_END_NV markers are not intended
+for use by typical applications.
+See <<low-latency2-frame-attribution>> for information on how the
+implementation interprets these markers.
+====
+
+[NOTE]
+====
+Intermediate layers, such as frame-generation implementations, may: defer or
+replace fname:vkQueuePresentKHR calls.
+Such layers should: leave the original
+ename:VK_LATENCY_MARKER_PRESENT_START_NV and
+ename:VK_LATENCY_MARKER_PRESENT_END_NV markers in place and emit
+ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_START_NV and
+ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_END_NV markers surrounding each
+of their fname:vkQueuePresentKHR calls.
+====
 --
 
 [open,refpage='vkGetLatencyTimingsNV',desc='Get latency marker results',type='protos']
@@ -9260,7 +9302,7 @@ include::{generated}/validity/structs/VkGetLatencyMarkerInfoNV.adoc[]
 [open,refpage='VkLatencyTimingsFrameReportNV',desc='Structure containing latency data',type='structs']
 --
 The slink:VkLatencyTimingsFrameReportNV structure describes latency data
-returned by flink:vkGetLatencyTimingsNV
+returned by flink:vkGetLatencyTimingsNV.
 
 include::{generated}/api/structs/VkLatencyTimingsFrameReportNV.adoc[]
 
@@ -9270,20 +9312,23 @@ the following:
   * pname:sType is a elink:VkStructureType value identifying this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:presentID is the application provided value that is used to
-    associate the timestamp with a fname:vkQueuePresentKHR command using
+  * pname:presentID is the application-defined identifier of the
+    application-rendered frame described by this structure.
+    It is the same value that the application passes to
+    flink:vkSetLatencyMarkerNV via
+    slink:VkSetLatencyMarkerInfoNV::pname:presentID.
+    It is not related to presentIds passed via
 ifdef::VK_KHR_present_id[]
 ifdef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds or]
-ifndef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds]
+ifndef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds.]
 endif::VK_KHR_present_id[]
-ifdef::VK_KHR_present_id2[slink:VkPresentId2KHR::pname:pPresentIds]
-    for a given present.
+ifdef::VK_KHR_present_id2[slink:VkPresentId2KHR::pname:pPresentIds.]
   * pname:simStartTimeUs is the timestamp written when
     fname:vkSetLatencyMarkerNV is called with the ename:VkLatencyMarkerNV
     enum ename:VK_LATENCY_MARKER_SIMULATION_START_NV.
   * pname:simEndTimeUs is the timestamp written when
     fname:vkSetLatencyMarkerNV is called with the ename:VkLatencyMarkerNV
-    enum ename:VK_LATENCY_MARKER_SIMULATION_END_NV
+    enum ename:VK_LATENCY_MARKER_SIMULATION_END_NV.
   * pname:renderStartTimeUs is the timestamp written when
     fname:vkSetLatencyMarkerNV is called with the ename:VkLatencyMarkerNV
     enum ename:VK_LATENCY_MARKER_RENDERSUBMIT_START_NV.
@@ -9312,7 +9357,7 @@ ifdef::VK_KHR_present_id2[slink:VkPresentId2KHR::pname:pPresentIds]
 include::{generated}/validity/structs/VkLatencyTimingsFrameReportNV.adoc[]
 --
 
-[open,refpage='VkLatencySubmissionPresentIdNV',desc='Structure used to associate a queueSubmit with a presentId',type='structs']
+[open,refpage='VkLatencySubmissionPresentIdNV',desc='Structure used to associate a queue submission with an application-rendered frame',type='structs']
 --
 The slink:VkLatencySubmissionPresentIdNV structure is defined as:
 
@@ -9321,19 +9366,69 @@ include::{generated}/api/structs/VkLatencySubmissionPresentIdNV.adoc[]
   * pname:sType is a elink:VkStructureType value identifying this structure.
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
-  * pname:presentID is used to associate the fname:vkQueueSubmit with the
-    presentId used for a given fname:vkQueuePresentKHR via
+  * pname:presentID is the application-defined identifier of the
+    application-rendered frame that this submission belongs to.
+    It is not related to presentIds passed via
 ifdef::VK_KHR_present_id[]
 ifdef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds or]
 ifndef::VK_KHR_present_id2[slink:VkPresentIdKHR::pname:pPresentIds.]
 endif::VK_KHR_present_id[]
 ifdef::VK_KHR_present_id2[slink:VkPresentId2KHR::pname:pPresentIds.]
 
-For any submission to be tracked with low latency mode pacing, it needs to
-be associated with other submissions in a given present.
-To associate a submission with pname:presentID for low latency mode, the
-pname:pNext chain of flink:vkQueueSubmit must: include a
-sname:VkLatencySubmissionPresentIdNV structure.
+If the implicit submission attribution rules defined in
+<<low-latency2-frame-attribution>> are not sufficient, an application can:
+associate submissions with application-rendered frames by chaining
+sname:VkLatencySubmissionPresentIdNV to its fname:vkQueueSubmit
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+or fname:vkQueueSubmit2
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+calls.
+A non-zero pname:presentID passed via sname:VkLatencySubmissionPresentIdNV
+must: be greater than or equal to any non-zero pname:presentID previously
+passed via sname:VkLatencySubmissionPresentIdNV on the same queue.
+
+A logical device enters _explicit submission attribution_ mode when any
+queue on that device receives a sname:VkLatencySubmissionPresentIdNV with a
+non-zero pname:presentID.
+While a device is in explicit submission attribution mode, each
+fname:vkQueueSubmit
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+or fname:vkQueueSubmit2
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+call will be associated with the pname:presentID value of the first of these
+rules to apply:
+
+  * The pname:presentID in sname:VkLatencySubmissionPresentIdNV chained to
+    the submission, if non-zero.
+  * The most recent pname:presentID passed via
+    sname:VkLatencySubmissionPresentIdNV on the same queue, if non-zero.
+  * The maximum pname:presentID previously passed via
+    sname:VkLatencySubmissionPresentIdNV on the device.
+
+A fname:vkQueueSubmit
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+or fname:vkQueueSubmit2
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+call that chains sname:VkLatencySubmissionPresentIdNV with a pname:presentID
+of zero clears the tracked pname:presentID for that queue.
+The device will exit explicit submission attribution mode when all queues'
+tracked pname:presentID values have been cleared.
+It will then return to using the implicit attribution rules.
+
+Explicit submission attribution is only respected by implementations
+advertising support for `apiext:VK_NV_low_latency2` with a
+slink:VkExtensionProperties::pname:specVersion greater than or equal to 3.
+Implementations advertising a lower pname:specVersion ignore
+sname:VkLatencySubmissionPresentIdNV, so applications should: verify the
+advertised pname:specVersion before relying on explicit submission
+attribution.
+
+[NOTE]
+====
+Most applications do not need to pass sname:VkLatencySubmissionPresentIdNV.
+The implicit rules described in <<low-latency2-frame-attribution>> are
+sufficient for the vast majority of applications.
+====
 
 include::{generated}/validity/structs/VkLatencySubmissionPresentIdNV.adoc[]
 --
@@ -9382,6 +9477,69 @@ queue type in slink:VkOutOfBandQueueTypeInfoNV as described below:
     will be presented from.
 --
 
+[[low-latency2-frame-attribution]]
+==== Frame Attribution
+
+VK_NV_low_latency2 relies on attributing each fname:vkQueuePresentKHR and
+fname:vkQueueSubmit call to an application-rendered frame, identified by the
+pname:presentID values from slink:VkSetLatencyMarkerInfoNV.
+Correct attribution is required for latency reduction.
+This attribution can: be used to measure frame timing statistics even when
+low latency sleep mode is disabled.
+
+A fname:vkQueuePresentKHR call is attributed to an application-rendered
+frame according to the first of these rules to apply.
+
+  * If a ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_START_NV marker has
+    been observed without an intervening
+    ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_END_NV, the frame's
+    pname:presentID is the pname:presentID from that marker.
+  * If the most recent ename:VK_LATENCY_MARKER_PRESENT_START_NV marker's
+    pname:presentID has not already been mapped to a fname:vkQueuePresentKHR
+    call, its pname:presentID is used.
+  * Otherwise the fname:vkQueuePresentKHR call is considered a new
+    application-rendered frame with no pname:presentID.
+
+[NOTE]
+====
+The first rule allows frame generation implementations to map multiple
+fname:vkQueuePresentKHR calls to the same pname:presentID, by emitting
+multiple pairs of ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_START_NV and
+ename:VK_LATENCY_MARKER_OUT_OF_BAND_PRESENT_END_NV markers with the same
+pname:presentID around each fname:vkQueuePresentKHR call.
+====
+
+Each fname:vkQueueSubmit
+ifdef::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+or fname:vkQueueSubmit2
+endif::VK_BASE_VERSION_1_3,VK_KHR_synchronization2[]
+call is attributed to an application-rendered frame according to the first
+of these rules that applies.
+
+  * If the queue has been marked as
+    ename:VK_OUT_OF_BAND_QUEUE_TYPE_PRESENT_NV via
+    flink:vkQueueNotifyOutOfBandNV, the submission is ignored.
+  * If the device is in explicit submission attribution mode as described
+    under slink:VkLatencySubmissionPresentIdNV, the pname:presentID
+    determined by that structure's rules is used.
+  * If the queue has been marked as
+    ename:VK_OUT_OF_BAND_QUEUE_TYPE_RENDER_NV, the submission is attributed
+    to the pname:presentID of the most recent
+    ename:VK_LATENCY_MARKER_OUT_OF_BAND_RENDERSUBMIT_START_NV marker that
+    has been observed.
+  * Otherwise the submission will be added to a list of pending submissions.
+    All submissions in this list will be mapped to the same
+    application-rendered frame once one of the following frame delimiters is
+    reached.
+    If any queue has been marked as out-of-band via
+    flink:vkQueueNotifyOutOfBandNV, application-rendered frames are
+    delimited by ename:VK_LATENCY_MARKER_PRESENT_END_NV markers, and the
+    pending submission list is attributed to that marker's pname:presentID.
+    Otherwise, application-rendered frames are delimited by
+    fname:vkQueuePresentKHR calls, and the group is attributed to that
+    present's application-rendered frame according to the
+    fname:vkQueuePresentKHR mapping rules above.
+
 [open,refpage='VkSwapchainLatencyCreateInfoNV',desc='Specify that a swapchain will use low latency mode',type='structs']
 --
 To allow low latency mode to be used by a swapchain, add a
@@ -9411,11 +9569,12 @@ include::{generated}/api/structs/VkLatencySurfaceCapabilitiesNV.adoc[]
   * pname:pNext is `NULL` or a pointer to a structure extending this
     structure.
   * pname:presentModeCount is the number of presentation modes provided.
-  * pname:pPresentModes is list of presentation modes optimized for use with
-    low latency mode with pname:presentModeCount entries.
+  * pname:pPresentModes is a list of presentation modes optimized for use
+    with low latency mode with pname:presentModeCount entries.
 
 If pname:pPresentModes is `NULL`, then the number of present modes that are
-optimized for use with low latency mode returned in pname:presentModeCount.
+optimized for use with low latency mode is returned in
+pname:presentModeCount.
 Otherwise, pname:presentModeCount must: be set by the application to the
 number of elements in the pname:pPresentModes array, and on return is
 overwritten with the number of values actually written to

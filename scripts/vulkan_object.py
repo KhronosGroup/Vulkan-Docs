@@ -256,9 +256,25 @@ class ExtendedFlag:
     struct: str # ex) VkImageUsageFlags2CreateInfoKHR
 
 @dataclass
+class StructCapabilityAlias:
+    """An alias that points to a member inside another feature structure."""
+    struct: str   # ex) VkPhysicalDeviceShaderSubgroupRotateFeatures
+    member: str   # ex) shaderSubgroupRotate
+
+@dataclass
+class ExtensionCapabilityAlias:
+    """An alias indicating the feature is enabled using the extension."""
+    name: str  # ex) VK_KHR_sampler_mirror_clamp_to_edge
+
+CapabilityAlias = StructCapabilityAlias | ExtensionCapabilityAlias
+
+@dataclass
 class Member:
     """<member>"""
     name: str # ex) sType, pNext, flags, size, usage
+
+     # ex) {VkPhysicalDeviceShaderSubgroupRotateFeatures, shaderSubgroupRotate}
+    capabilityAlias: (CapabilityAlias | None)
 
     # the "base type" - will not preserve the 'const' or pointer info
     # ex) void, uint32_t, VkFormat, VkBuffer, etc
