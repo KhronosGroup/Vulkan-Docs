@@ -41,6 +41,7 @@ class CGeneratorOptions(GeneratorOptions):
                  aliasMacro='',
                  misracstyle=False,
                  misracppstyle=False,
+                 indentClosingBrace=False,
                  **kwargs
                  ):
         """Constructor.
@@ -164,6 +165,8 @@ class CGeneratorOptions(GeneratorOptions):
 
         self.misracppstyle = misracppstyle
         """generate MISRA C++-friendly headers"""
+
+        self.indentClosingBrace = indentClosingBrace
 
         self.codeGenerator = True
         """True if this generator makes compilable code"""
