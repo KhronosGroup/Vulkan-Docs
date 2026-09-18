@@ -171,6 +171,11 @@ class Param:
     # ex) VkTransformMatrixKHR:matrix is ['3', '4']
     fixedSizeArray: list[str]
 
+    objectType: (str | None) # if not None then this is a uint64_t parameter containing a raw object
+                             # handle value and this is the name of the parameter specifying the
+                             # object type value (a VkObjectType or VkDebugReportObjectTypeEXT enum
+                             # constant discriminating the object type of the handle)
+
     optional: bool
     # Note: "optionalPointer" is a misleading name, this should have probably been "optionalPointedValue"
     optionalPointer: bool # if type contains a pointer, is the pointer value optional
@@ -296,6 +301,11 @@ class Member:
     # ex) memoryTypes is ['VK_MAX_MEMORY_TYPES']
     # ex) VkTransformMatrixKHR:matrix is ['3', '4']
     fixedSizeArray: list[str]
+
+    objectType: (str | None) # if not None then this is a uint64_t parameter containing a raw object
+                             # handle value and this is the name of the member specifying the
+                             # object type value (a VkObjectType or VkDebugReportObjectTypeEXT enum
+                             # constant discriminating the object type of the handle)
 
     extendedFlag: (ExtendedFlag | None)
 

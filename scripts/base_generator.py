@@ -861,6 +861,8 @@ class BaseGenerator(OutputGenerator):
             if fixedSizeArray and not length:
                 length = ','.join(fixedSizeArray)
 
+            objectType = param.get('objecttype')
+
             # See Member::optional code for details of this
             optionalValues = splitIfGet(param, 'optional')
             optional = len(optionalValues) > 0 and optionalValues[0].lower() == "true"
@@ -871,7 +873,7 @@ class BaseGenerator(OutputGenerator):
 
             params.append(Param(paramName, paramAlias, paramType, paramFullType, paramNoautovalidity,
                                 paramConst, length, nullTerminated, pointer, fixedSizeArray,
-                                optional, optionalPointer,
+                                objectType, optional, optionalPointer,
                                 externSync, externSyncPointer, cdecl))
 
         attrib = cmdinfo.elem.attrib
@@ -1086,6 +1088,8 @@ class BaseGenerator(OutputGenerator):
                 if fixedSizeArray and not length:
                     length = ','.join(fixedSizeArray)
 
+                objectType = member.get('objecttype')
+
                 extendedFlag = None
                 if member.get('flagsextend') is not None:
                     extendedFlag = ExtendedFlag(member.get('flagsextend'))
@@ -1110,7 +1114,7 @@ class BaseGenerator(OutputGenerator):
 
                 members.append(Member(name, capabilityAlias, type, fullType, noautovalidity, limittype,
                                       const, length, nullTerminated, pointer, fixedSizeArray,
-                                      extendedFlag, optional, optionalPointer,
+                                      objectType, extendedFlag, optional, optionalPointer,
                                       externSync, cdecl, bitFieldWidth, selector, selections))
 
             self.vk.structs[typeName] = Struct(typeName, [], extension, self.currentVersion, protect, members,

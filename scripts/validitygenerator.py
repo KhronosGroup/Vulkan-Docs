@@ -445,7 +445,7 @@ class ValidityOutputGenerator(OutputGenerator):
         paramtype = getElemType(param)
         type_category = self.getTypeCategory(paramtype)
         is_optional = param.get('optional').split(',')[0] == 'true'
-        if type_category != 'bitmask' and is_optional:
+        if is_optional:
             if self.paramIsArray(param) or self.paramIsPointer(param):
                 optional_val = self.null
             elif type_category == 'handle':
@@ -674,7 +674,7 @@ class ValidityOutputGenerator(OutputGenerator):
             if len(lengths) > 1 or (lengths[0] != 1 and not lengths[0].null_terminated):
                 entry += 's'
 
-            return self.handleRequiredBitmask(blockname, param, paramtype, entry, 'true' if array_element_optional else None)
+            return entry
 
         if self.paramIsPointer(param):
             # Handle pointers - which are really special case arrays (i.e.
@@ -707,46 +707,11 @@ class ValidityOutputGenerator(OutputGenerator):
                 entry += 'valid '
 
             entry += typetext
-            return self.handleRequiredBitmask(blockname, param, paramtype, entry, param.get('optional'))
-
-        # Add additional line for non-optional bitmasks
-        if self.getTypeCategory(paramtype) == 'bitmask':
-            # TODO does not really handle if someone tries something like optional="true,false"
-            # TODO OpenXR has 0 or a valid combination of flags, for optional things.
-            # Vulkan does not...
-            # isMandatory = param.get('optional') is None
-            # if not isMandatory:
-            #     entry += self.conventions.zero
-            #     entry += ' or '
-            # Non-pointer, non-optional things must be valid
-            entry += f'a valid {typetext}'
-
-            return self.handleRequiredBitmask(blockname, param, paramtype, entry, param.get('optional'))
+            return entry
 
         # Non-pointer, non-optional things must be valid
         entry += f'a valid {typetext}'
         return entry
-
-    def handleRequiredBitmask(self, blockname, param, paramtype, entry, optional):
-        # TODO does not really handle if someone tries something like optional="true,false"
-        if self.getTypeCategory(paramtype) != 'bitmask' or optional == 'true':
-            return entry
-        if self.paramIsPointer(param) and not self.paramIsArray(param):
-            # This is presumably an output parameter
-            return entry
-
-        param_name = getElemName(param)
-        # If mandatory, then we need two entries instead of just one.
-        validity = self.makeValidityCollection(blockname)
-        validity += entry
-
-        entry2 = ValidityEntry(anchor=(param_name, 'requiredbitmask'))
-        if self.paramIsArray(param):
-            entry2 += 'Each element of '
-        entry2 += '{} must: not be {}'.format(
-            self.makeParameterName(param_name), self.conventions.zero)
-        validity += entry2
-        return validity
 
     def createValidationLineForParameter(self, blockname, param, params, typecategory, selector, parentname):
         """Make an entire validation entry for a given parameter."""

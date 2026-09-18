@@ -939,7 +939,7 @@ include::{generated}/api/enums/VkMemoryPropertyFlagBits.adoc[]
     visibility>> on the host.
   * ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT bit specifies that memory
     allocated with this type is cached on the host.
-    Host memory accesses to uncached memory are slower than to cached
+    Host memory read accesses to uncached memory are slower than to cached
     memory, however uncached memory is always host coherent.
   * ename:VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT bit specifies that the
     memory type only allows device access to the memory.
@@ -997,6 +997,73 @@ As such, it is generally inadvisable to use device coherent or device
 uncached memory except when really needed.
 ====
 endif::VK_AMD_device_coherent_memory[]
+
+[NOTE]
+====
+Between the memory types which support
+ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT on any particular implementation,
+there may be different properties which cater to different memory access
+patterns.
+
+ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT is expected to be used when the
+host performs any read or read-modify-write operations on the memory.
+The typical scenario for this is when data flows from device to host.
+A typical implementation of this is normal `malloc`-like memory.
+
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT without
+ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT is expected for upload operations
+where data flows from host to device, for purposes of initializing resources
+or similar.
+A typical implementation of this memory type is write-combined memory which
+avoids polluting caches on the host, but has severe performance penalties if
+it is read from.
+The host is also expected to write complete cache lines for maximum
+performance.
+
+Some implementations may not support uncached memory types.
+The expectation is that applications will end up using a memory type that
+support ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT and
+ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT together.
+Either way, applications are expected to look for the first memory type
+which supports ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT and use that.
+On ename:VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU with a unified memory
+architecture, ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT is less of a concern
+since all memory is effectively device-local, but on
+ename:VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, there may be a distinction
+between a ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT memory type which is
+additionally ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT or not.
+
+On discrete GPUs, using ename:VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, and
+ename:VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT together is intended for small
+uploads to device memory which is optimized for fast device access without
+the need to go through a separate copy operation.
+Also known as BAR on PCI-e platforms.
+Peak write performance may be lower than system memory, and is not
+recommended for large uploads to the device.
+Common use cases for this type may be
+ifdef::VK_EXT_descriptor_heap[]
+updating descriptors in a descriptor heap with
+flink:vkWriteResourceDescriptorsEXT and flink:vkWriteSamplerDescriptorsEXT,
+endif::VK_EXT_descriptor_heap[]
+ifdef::VK_EXT_descriptor_buffer[]
+updating descriptors in a descriptor buffer with flink:vkGetDescriptorEXT,
+endif::VK_EXT_descriptor_buffer[]
+ifdef::VK_EXT_descriptor_heap,VK_EXT_descriptor_buffer[or]
+writing uniform buffer data.
+
+Some implementations may support host visible types which are
+ename:VK_MEMORY_PROPERTY_HOST_CACHED_BIT, where some types support
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT alongside CACHED, and some types
+which do not support ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT in
+combination with CACHED.
+Unless coherency is required by the application's usage patterns, the
+ename:VK_MEMORY_PROPERTY_HOST_COHERENT_BIT supporting type is likely to be
+less optimal.
+If an application only looks for the CACHED property, it must come before
+the CACHED | COHERENT memory type in the memory types list, so this
+suggestion will be followed by default.
+====
 --
 
 [open,refpage='VkMemoryPropertyFlags',desc='Bitmask of VkMemoryPropertyFlagBits',type='flags']
@@ -1588,6 +1655,14 @@ ifdef::VK_KHR_external_memory_fd[]
     pname:memoryTypeIndex must: be one of those returned by
     flink:vkGetMemoryFdPropertiesKHR
 endif::VK_KHR_external_memory_fd[]
+ifdef::VK_EXT_external_memory_dma_buf[]
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkMemoryAllocateInfo-None-12523]]
+    If the parameters define an import operation and the external handle
+    type is ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, the number
+    of instances allocated must: be `1`
+endif::VK_BASE_VERSION_1_1,VK_KHR_device_group[]
+endif::VK_EXT_external_memory_dma_buf[]
 ifdef::VK_BASE_VERSION_1_1[]
   * [[VUID-VkMemoryAllocateInfo-memoryTypeIndex-01872]]
     If the <<features-protectedMemory, pname:protectedMemory>> feature is
@@ -2826,6 +2901,14 @@ endif::VK_EXT_external_memory_dma_buf[]
     pname:handleType must: be
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT or
     ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
+ifdef::VK_EXT_external_memory_dma_buf[]
+ifdef::VK_BASE_VERSION_1_1,VK_KHR_device_group[]
+  * [[VUID-VkMemoryGetFdInfoKHR-handleType-12524]]
+    If pname:handleType is
+    ename:VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, pname:memory must:
+    not have been allocated with multiple instances
+endif::VK_BASE_VERSION_1_1,VK_KHR_device_group[]
+endif::VK_EXT_external_memory_dma_buf[]
 ****
 
 include::{generated}/validity/structs/VkMemoryGetFdInfoKHR.adoc[]
