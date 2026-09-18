@@ -117,7 +117,7 @@ $(VULKAN)/vk_platform.h: $(STATIC)/vk_platform.h
 # Python and XML files on which vulkan_core.h depends
 GENSCRIPT   = $(SCRIPTS)/genvk.py
 VKXML	    = vk.xml
-VKH_DEPENDS = $(VKXML) $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py
+VKH_DEPENDS = $(VKXML) $(GENSCRIPT) $(SCRIPTS)/reg.py $(SCRIPTS)/generator.py $(SCRIPTS)/cgenerator.py
 
 $(HEADERS_H): $(VKH_DEPENDS)
 	$(MKDIR) $(VULKAN)
