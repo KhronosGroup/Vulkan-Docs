@@ -486,7 +486,7 @@ class COutputGenerator(OutputGenerator):
             targetLen = self.getMaxCParamTypeLength(typeinfo)
             for member in typeElem.findall('.//member'):
                 body += self.deprecationComment(member, indent = 4)
-                body += self.makeCParamDecl(member, targetLen + 4)
+                body += self.makeCParamDecl(member, targetLen + 4, structname=typeName)
                 body += ';\n'
             body += f"}} {typeName};\n"
             if protect_end:
