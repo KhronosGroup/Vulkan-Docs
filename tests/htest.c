@@ -29,6 +29,7 @@
 #define VK_USE_PLATFORM_XLIB_KHR            // <X11/Xlib.h>
 #define VK_USE_PLATFORM_XLIB_XRANDR_EXT     // <X11/extensions/Xrandr.h>
 #define VK_USE_PLATFORM_SCREEN_QNX          // <screen/screen.h>
+#define VK_USE_PLATFORM_UBM_SEC             // <ubm.h>
 #define VK_ENABLE_BETA_EXTENSIONS           // No headers needed
 
 #include <vulkan/vulkan.h>

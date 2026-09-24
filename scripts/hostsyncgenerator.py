@@ -168,7 +168,7 @@ endif::VK_KHR_internally_synchronized_queues[]"""
             else:
                 self.threadsafety[collectionname] += entry
 
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         "Generate command."
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
@@ -176,7 +176,7 @@ endif::VK_KHR_internally_synchronized_queues[]"""
 
         self.makeThreadSafetyBlocks(cmdinfo.elem, 'param')
 
-    def genType(self, typeinfo, name, alias):
+    def genType(self, typeinfo, name, alias, protect=None):
         "Generate struct."
         OutputGenerator.genType(self, typeinfo, name, alias)
 

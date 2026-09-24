@@ -12,8 +12,8 @@ from vulkan_object import (VulkanObject, CapabilityAlias, StructCapabilityAlias,
     Extension, Version, Legacy, Handle, FuncPointerParam, FuncPointer, Param, CommandScope, Command,
     EnumField, Enum, Flag, Bitmask, ExternSync, Flags, ExtendedFlag, Member, Struct,
     Constant, FormatComponent, FormatPlane, Format, FeatureRequirement,
-    SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline,
-    SpirvEnables, Spirv,
+    EnableState, DynamicState, DynamicStateCommand,
+    SyncSupport, SyncEquivalent, SyncStage, SyncAccess, SyncPipelineStage, SyncPipeline, Spirv,
     VideoCodec, VideoFormat, VideoProfiles, VideoProfileMember, VideoRequiredCapabilities,
     VideoStd, VideoStdHeader)
 
@@ -74,6 +74,12 @@ def externSyncGet(elem):
 maxSyncSupport = SyncSupport(None, None, True)
 maxSyncEquivalent = SyncEquivalent(None, None, True)
 
+# Default global fallbacks if Set* functions are not called
+globalFileName = None
+globalDirectory = '.'
+globalApiName = 'vulkan'
+globalMergedApiNames = None
+
 # Helpers to set GeneratorOptions options globally
 def SetOutputFileName(fileName: str) -> None:
     global globalFileName
@@ -88,8 +94,8 @@ def SetTargetApiName(apiname: str) -> None:
     globalApiName = apiname
 
 def SetMergedApiNames(names: str) -> None:
-    global mergedApiNames
-    mergedApiNames = names
+    global globalMergedApiNames
+    globalMergedApiNames = names
 
 cachingEnabled = False
 def EnableCaching() -> None:
@@ -143,6 +149,7 @@ class BaseGeneratorOptions(GeneratorOptions):
                  customFileName = None,
                  customDirectory = None,
                  customApiName = None,
+                 customMergedApiName = None,
                  videoXmlPath = None):
         apiName = customApiName if customApiName else globalApiName
         GeneratorOptions.__init__(self,
@@ -150,11 +157,12 @@ class BaseGeneratorOptions(GeneratorOptions):
                 filename = customFileName if customFileName else globalFileName,
                 directory = customDirectory if customDirectory else globalDirectory,
                 apiname = apiName,
-                mergeApiNames = mergedApiNames,
+                mergeApiNames = customMergedApiName if customMergedApiName else globalMergedApiNames,
                 defaultExtensions = apiName,
                 emitExtensions = '.*',
                 emitSpirv = '.*',
-                emitFormats = '.*')
+                emitFormats = '.*',
+                emitDynamicState = '.*')
         # These are used by the generator.py script
         self.apicall         = 'VKAPI_ATTR '
         self.apientry        = 'VKAPI_CALL '
@@ -787,7 +795,7 @@ class BaseGenerator(OutputGenerator):
             # reg.py parsed it. That broke the general behavior of reg.py for certain use cases so we now
             # filter extensions here instead (after parsing) in order to no longer need the filtering hack
             # in downstream `generate_source.py` scripts.
-            enabledApiList = [ globalApiName ] + ([] if mergedApiNames is None else mergedApiNames.split(','))
+            enabledApiList = [ globalApiName ] + ([] if globalMergedApiNames is None else globalMergedApiNames.split(','))
             if (sup := interface.get('supported')) is not None and all(api not in sup.split(',') for api in enabledApiList):
                 self.unsupportedExtension = True
                 return
@@ -828,7 +836,7 @@ class BaseGenerator(OutputGenerator):
 
     #
     # All <command> from XML
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         # Do not include APIs from unsupported extensions
@@ -926,7 +934,7 @@ class BaseGenerator(OutputGenerator):
     #
     # List the enum for the commands
     # TODO - Seems empty groups like `VkDeviceDeviceMemoryReportCreateInfoEXT` do not show up in here
-    def genGroup(self, groupinfo, groupName, alias):
+    def genGroup(self, groupinfo, groupName, alias, protect=None):
         # Do not include APIs from unsupported extensions
         if self.unsupportedExtension:
             return
@@ -1017,7 +1025,7 @@ class BaseGenerator(OutputGenerator):
             flagName = groupName.replace('FlagBits', 'Flags')
             self.vk.bitmasks[groupName] = Bitmask(groupName, [], flagName, groupProtect, bitwidth, True, fields, [], [])
 
-    def genType(self, typeInfo, typeName, alias):
+    def genType(self, typeInfo, typeName, alias, protect=None):
         OutputGenerator.genType(self, typeInfo, typeName, alias)
 
         # Do not include APIs from unsupported extensions
@@ -1059,7 +1067,7 @@ class BaseGenerator(OutputGenerator):
                         capabilityAlias = StructCapabilityAlias(struct_part, member_part)
                     else:
                         capabilityAlias = ExtensionCapabilityAlias(raw_alias)
-                
+
                 type = textIfFind(member, 'type')
                 sType = member.get('values') if member.get('values') is not None else sType
                 noautovalidity = boolGet(member, 'noautovalidity')
@@ -1198,7 +1206,7 @@ class BaseGenerator(OutputGenerator):
             #   'basetype'/'include' are only for headers
             return
 
-    def genSpirv(self, spirvinfo, spirvName, alias):
+    def genSpirv(self, spirvinfo, spirvName, alias, protect=None):
         OutputGenerator.genSpirv(self, spirvinfo, spirvName, alias)
         spirvElem = spirvinfo.elem
         name = spirvElem.get('name')
@@ -1215,12 +1223,12 @@ class BaseGenerator(OutputGenerator):
             propertyEnable = elem.attrib.get('property')
             member = elem.attrib.get('member')
             value = elem.attrib.get('value')
-            enables.append(SpirvEnables(version, extensionEnable, struct, feature,
+            enables.append(EnableState(version, extensionEnable, struct, feature,
                                         requires, propertyEnable, member, value))
 
         self.vk.spirv.append(Spirv(name, extension, capability, enables))
 
-    def genFormat(self, format, formatinfo, alias):
+    def genFormat(self, format, formatinfo, alias, protect=None):
         OutputGenerator.genFormat(self, format, formatinfo, alias)
         formatElem = format.elem
         name = formatElem.get('name')
@@ -1255,6 +1263,69 @@ class BaseGenerator(OutputGenerator):
         self.vk.formats[name] = Format(name, className, blockSize, texelsPerBlock,
                                        blockExtent, packed, chroma, compressed,
                                        components, planes, spirvImageFormat)
+
+    def genDynamicState(self, element):
+        OutputGenerator.genDynamicState(self, element)
+        elem = element.elem
+
+        name = elem.get('name')
+        shaderStage = elem.get('shaderstage')
+        pipelineSubStates = splitIfGet(elem, 'pipelinesubstate')
+        requiresRasterization = boolGet(elem, 'requiresrasterization')
+
+        commands = []
+        for cmdElem in elem.iterfind('dynamicstatecmd'):
+            cmdName = cmdElem.get('name')
+            pipelineEnum = cmdElem.get('pipeline')
+            pipelineOnly = boolGet(cmdElem, 'pipelineonly')
+
+            commands.append(DynamicStateCommand(
+                name=cmdName,
+                pipelineEnum=pipelineEnum,
+                pipelineOnly=pipelineOnly
+            ))
+
+        enables = []
+        for enableElem in elem.iterfind('enable'):
+            version = enableElem.get('version')
+            extensionEnable = enableElem.get('extension')
+            struct = enableElem.get('struct')
+            feature = enableElem.get('feature')
+            requires = enableElem.get('requires')
+            propertyEnable = enableElem.get('property')
+            member = enableElem.get('member')
+            value = enableElem.get('value')
+
+            enables.append(
+                EnableState(
+                    version=version,
+                    extension=extensionEnable,
+                    struct=struct,
+                    feature=feature,
+                    requires=requires,
+                    property=propertyEnable,
+                    member=member,
+                    value=value
+                )
+            )
+
+        stateRequired = None
+        specialRequired = None
+        stateCond = elem.find('statecondition')
+        if stateCond is not None:
+            stateRequired = stateCond.get('state')
+            specialRequired = stateCond.get('special')
+
+        self.vk.dynamicStates[name] = DynamicState(
+            name=name,
+            commands=commands,
+            shaderStage=shaderStage,
+            pipelineSubStates=pipelineSubStates,
+            requiresRasterization=requiresRasterization,
+            stateRequired=stateRequired,
+            specialRequired=specialRequired,
+            enable=enables
+        )
 
     def genSyncStage(self, sync):
         OutputGenerator.genSyncStage(self, sync)
@@ -1395,11 +1466,11 @@ class _VideoStdGenerator(BaseGenerator):
         # We intentionally skip default BaseGenerator behavior
         OutputGenerator.endFeature(self)
 
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         # video.xml should not contain any commands
         assert False
 
-    def genGroup(self, groupinfo, groupName, alias):
+    def genGroup(self, groupinfo, groupName, alias, protect=None):
         BaseGenerator.genGroup(self, groupinfo, groupName, alias)
 
         # We are supposed to be inside a video std header
@@ -1410,7 +1481,7 @@ class _VideoStdGenerator(BaseGenerator):
             assert alias is None
             self.vk.enums[groupName].videoStdHeader = self.currentVideoStdHeader.name
 
-    def genType(self, typeInfo, typeName, alias):
+    def genType(self, typeInfo, typeName, alias, protect=None):
         BaseGenerator.genType(self, typeInfo, typeName, alias)
 
         # We are supposed to be inside a video std header
@@ -1421,12 +1492,16 @@ class _VideoStdGenerator(BaseGenerator):
             assert alias is None
             self.vk.structs[typeName].videoStdHeader = self.currentVideoStdHeader.name
 
-    def genSpirv(self, spirvinfo, spirvName, alias):
+    def genSpirv(self, spirvinfo, spirvName, alias, protect=None):
         # video.xml should not contain any SPIR-V info
         assert False
 
-    def genFormat(self, format, formatinfo, alias):
+    def genFormat(self, format, formatinfo, alias, protect=None):
         # video.xml should not contain any format info
+        assert False
+
+    def genDynamicState(self, element):
+        # video.xml should not contain any VkDynamicState info
         assert False
 
     def genSyncStage(self, sync):

@@ -398,7 +398,7 @@ class DocOutputGenerator(OutputGenerator):
                       (f"ename:{data['name']} -- {data['comment']}"
                        for data in values))
 
-    def genType(self, typeinfo, name, alias):
+    def genType(self, typeinfo, name, alias, protect=None):
         """Generate type."""
         OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
@@ -467,7 +467,7 @@ class DocOutputGenerator(OutputGenerator):
         body += f"}} {typeName};"
         return body
 
-    def genStruct(self, typeinfo, typeName, alias):
+    def genStruct(self, typeinfo, typeName, alias, protect=None):
         """Generate struct."""
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
@@ -565,7 +565,7 @@ class DocOutputGenerator(OutputGenerator):
             else:
                 raise RuntimeError(f"Unrecognized enums type: {str(group_type)}")
 
-    def genGroup(self, groupinfo, groupName, alias):
+    def genGroup(self, groupinfo, groupName, alias, protect=None):
         """Generate group (e.g. C "enum" type)."""
         OutputGenerator.genGroup(self, groupinfo, groupName, alias)
 
@@ -590,7 +590,7 @@ class DocOutputGenerator(OutputGenerator):
 
         self.writeInclude('enums', groupName, body, deprecatedby, deprecatedlink, supersededby)
 
-    def genEnum(self, enuminfo, name, alias):
+    def genEnum(self, enuminfo, name, alias, protect=None):
         """Generate the C declaration for a constant (a single <enum> value)."""
 
         OutputGenerator.genEnum(self, enuminfo, name, alias)
@@ -600,7 +600,7 @@ class DocOutputGenerator(OutputGenerator):
 
         self.writeInclude('enums', name, body, self.deprecatedBy(enuminfo), enuminfo.deprecatedlink, enuminfo.supersededby)
 
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         "Generate command."
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 

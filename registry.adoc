@@ -326,6 +326,9 @@ order should not be important):
     Usually only one tag is used, wrapping many extensions.
   * <<tag-formats,tag:formats>> - defines properties of image formats.
     Only one tag is used, wrapping all the formats.
+  * <<tag-dynamicstates,tag:dynamicstates>> - defines properties for
+    dynamic state.
+    Only one tag is used, wrapping all the1 `VkDynamicState` enums.
   * <<tag-spirvextensions,tag:spirvextensions>> - defines relationship
     between SPIR-V extensions and API interfaces which enable each
     extension.
@@ -2111,6 +2114,7 @@ Zero or more of the following tags, in any order:
 
 <<tag-comment, tag:comment>> (as described above).
 
+[[tag-required-command]]
 === Command Tags
 
 tag:command specifies a required, removed, or deprecated command defined in a
@@ -2121,9 +2125,30 @@ The tag has no content, but contains attributes:
     Name of the command.
   * attr:comment - optional.
     Arbitrary string (unused).
+  * attr:protect - optional.
+    If present, generates additional compile time conditional protection
+    around the command definition in generated C headers.
+    Body must be a name that can be tested using the C preprocessor
+    `defined()` directive, and should be a single API core version name,
+    extension name, or a symbol defined by the header boilerplate discussed
+    in the "`API Boilerplate`" appendix of the Vulkan Specification.
++
+--
+[NOTE]
+====
+attr:protect exists for unusual dependencies that cannot be fully determined
+by the generator scripts that create the header files.
+In particular, a provisional extension appearing in `vulkan_beta.h` with an
+interaction with a platform extension appearing in a header other than
+`vulkan_core.h` will need to use this attribute to prevent compilation
+failures when the platform header is not included prior to the beta header.
+====
+--
   * attr:supersededby - optional.
     Name of command it is superseded by, tag:deprecate block only.
 
+
+[[tag-required-enum]]
 === Enum Tags
 
 tag:enum specifies a required, removed, or deprecated enumerant defined in an tag:enums
@@ -2236,6 +2261,7 @@ Examples of <<tag-required-examples,various types of extension enumerants>>
 are given below.
 
 
+[[tag-required-type]]
 === Type Tags
 
 tag:type specifies a required, removed, or deprecated type defined in a tag:types
@@ -2252,6 +2278,12 @@ The tag has no content, but contains attributes:
     Arbitrary string (unused).
   * attr:supersededby - optional.
     Name of type it is superseded by, tag:deprecate block only.
+  * attr:protect - optional.
+    If present, generates additional compile time conditional protection
+    around the type definition in generated C headers.
+    The allowed values and the use cases for this tag
+    are the same as the attr:protect attribute of tag:command
+    tags in <<tag-required-command, tag:require>> tags.
 
 
 [[tag-required-examples]]
@@ -2527,6 +2559,104 @@ equivalent to this format.
 
 None.
 
+[[tag-dynamicstates]]
+= Dynamic States (tag:dynamicstates Tag)
+
+The tag:dynamicstates tag contains definitions of each of the logical pipeline
+dynamic states which are defined for the API.
+
+== Attributes of tag:dynamicstates Tags
+
+None.
+
+== Contents of tag:dynamicstates Tags
+
+A tag:dynamicstates block contains zero or more tag:dynamicstate tags, each
+describing a logical dynamic state, in arbitrary order.
+
+[[tag-dynamicstate]]
+= Dynamic State (tag:dynamicstate Tag)
+
+Dynamic states are described in individual tag:dynamicstate tags.
+This tag groups related Vulkan commands and contains information specifying
+the shader stages, pipeline substates, and conditions associated with the logical state.
+
+== Attributes of tag:dynamicstate Tags
+
+  * attr:name - required.
+    The logical name of the dynamic state group.
+    Example: `name="viewport"`.
+  * attr:shaderstage - optional.
+    The shader stage or stages affected by the dynamic state.
+    Example: `shaderstage="VK_SHADER_STAGE_ALL"`.
+  * attr:pipelinesubstate - optional.
+    A comma-separated list specifying the Graphics Pipeline Library sub-states this dynamic state maps to.
+    Allowed tokens:
+  ** `"Vertex Input"`
+  ** `"Pre-Rasterization Shader"`
+  ** `"Fragment Shader"`
+  ** `"Fragment Output"`
+  * attr:requiresrasterization - optional.
+    Set to `"true"` if setting/using this dynamic state requires rasterization to be enabled (`rasterizerDiscardEnable` set to `VK_FALSE`).
+
+== Contents of tag:dynamicstate Tags
+
+One or more <<tag-dynamicstatecmd,tag:dynamicstatecmd>> tags.
+Zero or more <<tag-enable,tag:enable>> tags, and zero or more <<tag-statecondition,tag:statecondition>> tags, in arbitrary order.
+
+== Example of a tag:dynamicstate Tag
+
+[source,xml]
+--------------------------------------
+<dynamicstate name="lineStipple"
+              shaderstage="VK_SHADER_STAGE_ALL"
+              pipelinesubstate="Pre-Rasterization Shader"
+              requiresrasterization="true">
+    <dynamicstatecmd name="vkCmdSetLineStipple" pipeline="VK_DYNAMIC_STATE_LINE_STIPPLE"/>
+    <enable struct="VkPhysicalDeviceLineRasterizationFeaturesKHR" feature="stippledRectangularLines" requires="VK_KHR_line_rasterization"/>
+    <statecondition state="lineStippleEnable" special="stippledLineTopology"/>
+</dynamicstate>
+--------------------------------------
+
+[[tag-dynamicstatecmd]]
+= Dynamic State Command (tag:dynamicstatecmd Tag)
+
+The tag:dynamicstatecmd tag maps a specific Vulkan command to its associated `VkDynamicState` enum.
+
+== Attributes of tag:dynamicstatecmd Tags
+
+  * attr:name - required.
+    The name of the Vulkan command used to set the dynamic state.
+    Example: `name="vkCmdSetViewport"`.
+  * attr:pipeline - required.
+    The name of the `VkDynamicState` enum required to use this command dynamically.
+    Example: `pipeline="VK_DYNAMIC_STATE_VIEWPORT"`.
+  * attr:pipelineonly - optional.
+    Set to `"true"` if the command is only applicable to pipelines and cannot be used with shader objects.
+
+== Contents of tag:dynamicstatecmd Tags
+
+None.
+
+[[tag-statecondition]]
+= State Condition (tag:statecondition Tag)
+
+The tag:statecondition tag specifies a precursor dynamic state or special execution context condition required prior to drawing.
+If there are multiple conditions they are AND together
+
+== Attributes of tag:statecondition Tags
+
+  * attr:state - optional.
+    The name of another dynamic state value that must be set/enabled prior to drawing.
+    Example: `state="VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE"`.
+  * attr:special - optional.
+    A keyword describing a specific context required for the rule.
+    This is done because some requirement are quite complex and more than fits in an XML file
+    Example: `special="lineTopology"`
+
+== Contents of tag:statecondition Tags
+
+None.
 
 [[tag-spirvextensions]]
 = SPIR-V Extensions (tag:spirvextensions Tag)
@@ -3703,6 +3833,10 @@ Changes to the `.xml` files and Python scripts are logged in GitHub history.
 [[changelog]]
 = Change Log
 
+  * 2026-09-17 - Add attr:protect attribute to the <<tag-required-command,
+    tag:type>> tag in tag:require blocks (internal issue 4950).
+  * 2026-09-09 - Add attr:protect attribute to the <<tag-required-command,
+    tag:command>> tag in tag:require blocks (internal issue 4950).
   * 2026-07-01 - Allow <<tag-required-feature, tag:feature>> tags inside
     tag:deprecate blocks, so a feature structure member can be marked legacy
     without adding attr:deprecated directly to its tag:member tag (internal

@@ -192,7 +192,7 @@ class ScriptOutputGenerator(OutputGenerator):
             import pdb
             pdb.set_trace()
 
-    def genType(self, typeinfo, name, alias):
+    def genType(self, typeinfo, name, alias, protect=None):
         """Generate type.
 
         - For 'struct' or 'union' types, defer to genStruct() to
@@ -291,7 +291,7 @@ class ScriptOutputGenerator(OutputGenerator):
             else:
                 self.logMsg('diag', 'ScriptOutputGenerator::genType: unprocessed type:', name)
 
-    def genStruct(self, typeinfo, typeName, alias):
+    def genStruct(self, typeinfo, typeName, alias, protect=None):
         """Generate struct (e.g. C "struct" type).
 
         Add the struct name to the 'structs' dictionary, with the
@@ -311,7 +311,7 @@ class ScriptOutputGenerator(OutputGenerator):
         for member_type in memberTypes:
             self.addMapping(typeName, member_type)
 
-    def genGroup(self, groupinfo, groupName, alias):
+    def genGroup(self, groupinfo, groupName, alias, protect=None):
         """Generate group (e.g. C "enum" type).
 
         These are concatenated together with other types.
@@ -341,7 +341,7 @@ class ScriptOutputGenerator(OutputGenerator):
         # Sort enums for output stability, since their order is irrelevant
         self.enums[groupName] = sorted(enumerants)
 
-    def genEnum(self, enuminfo, name, alias):
+    def genEnum(self, enuminfo, name, alias, protect=None):
         """Generate enumerant (compile time constant).
 
         - Add the constant name to the 'consts' dictionary, with the
@@ -367,7 +367,7 @@ class ScriptOutputGenerator(OutputGenerator):
         # <enums> type and in the <extension> or <feature> it originally
         # came from.
 
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         """Generate command.
 
         - Add the command name to the 'protos' dictionary, with the

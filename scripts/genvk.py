@@ -19,6 +19,7 @@ from cgenerator import CGeneratorOptions, COutputGenerator
 from reflib import logDiag, logWarn, logErr, setLogFile
 from reg import Registry
 from apiconventions import APIConventions
+from extdependency import ApiDependencies
 
 # Simple timer functions
 startTime = None
@@ -39,7 +40,7 @@ def endTimer(timeit, msg):
 
 
 def makeREstring(strings, default=None, strings_are_regex=False):
-    """Turn a list of strings into a regexp string matching exactly those strings."""
+    """Turn an iterable of strings into a regexp exactly matching those strings."""
     if strings or default is None:
         if not strings_are_regex:
             strings = (re.escape(s) for s in strings)
@@ -59,7 +60,7 @@ def makeGenOpts(args):
     # Default class of extensions to include, or None
     defaultExtensions = args.defaultExtensions
 
-    # Additional extensions to include (list of extensions)
+    # Additional extensions to include (set of extension names)
     extensions = args.extension
 
     # Extensions to remove (list of extensions)
@@ -74,7 +75,10 @@ def makeGenOpts(args):
     # Vulkan Formats to emit
     emitFormats = args.emitFormats
 
-    # Features to include (list of features)
+    # VkDynamicState to emit
+    emitDynamicState = args.emitDynamicState
+
+    # Features to include (set of feature names)
     features = args.feature
 
     # Whether to disable inclusion protect in headers
@@ -97,7 +101,7 @@ def makeGenOpts(args):
 
     # Descriptive names for various regexp patterns used to select
     # versions and extensions
-    allFormats = allSpirv = allFeatures = allExtensions = r'.*'
+    allFormats = allDynamicState = allSpirv = allFeatures = allExtensions = r'.*'
 
     # Turn lists of names/patterns into matching regular expressions
     addExtensionsPat     = makeREstring(extensions, None)
@@ -105,6 +109,7 @@ def makeGenOpts(args):
     emitExtensionsPat    = makeREstring(emitExtensions, allExtensions)
     emitSpirvPat         = makeREstring(emitSpirv, allSpirv)
     emitFormatsPat       = makeREstring(emitFormats, allFormats)
+    emitDynamicState     = makeREstring(emitDynamicState, allDynamicState)
     featuresPat          = makeREstring(features, allFeatures)
 
     # Copyright text prefixing all headers (list of strings).
@@ -159,6 +164,8 @@ def makeGenOpts(args):
         from spirvcapgenerator import SpirvCapabilityOutputGenerator
         from formatsgenerator import FormatsOutputGenerator
         from syncgenerator import SyncOutputGenerator
+        from dynamicstategenerator import DynamicStateOutputGenerator
+        from base_generator import BaseGeneratorOptions
 
         # API include files for spec and ref pages
         # Overwrites include subdirectories in spec source tree
@@ -419,97 +426,54 @@ def makeGenOpts(args):
                 reparentEnums     = False)
             ]
 
+        genOpts['dynamicstateinc'] = [
+            DynamicStateOutputGenerator,
+            BaseGeneratorOptions(
+                customFileName      = 'timeMarker',
+                customDirectory     = directory,
+                customApiName       = defaultAPIName,
+                customMergedApiName = mergeApiNames)
+            ]
+
     except ImportError:
         # Module dependencies are not available for spec generation
         pass
 
-    # Platform extensions, in their own header files
-    # Each element of the platforms[] array defines information for
-    # generating a single platform:
-    #   [0] is the generated header file name
-    #   [1] is the set of platform extensions to generate
-    #   [2] is additional extensions whose interfaces should be considered,
-    #   but suppressed in the output, to avoid duplicate definitions of
-    #   dependent types like VkDisplayKHR and VkSurfaceKHR which come from
-    #   non-platform extensions.
-
     # Track all platform extensions, for exclusion from vulkan_core.h
-    allPlatformExtensions = []
+    allPlatformExtensions = set()
 
-    # Extensions suppressed for all WSI platforms (WSI extensions required
-    # by all platforms)
-    commonSuppressExtensions = [ 'VK_KHR_display', 'VK_KHR_swapchain' ]
+    # Setup generators for platform header files
+    # For each platform, determines the extensions which are part of the
+    # platform, and the extensions on which the platform extensions depend.
+    # The platform header name is usually based on the platform attribute in
+    # the XML, but can be overridden as needed.
 
-    # Extensions required and suppressed for beta "platform". This can
-    # probably eventually be derived from the requires= attributes of
-    # the extension blocks.
-    betaRequireExtensions = [
-        'VK_KHR_portability_subset',
-        'VK_NV_displacement_micromap',
-        'VK_AMDX_dense_geometry_format',
-        'VK_AMDX_shader_enqueue',
-        'VK_NV_cuda_kernel_launch',
-    ]
+    deps = ApiDependencies(args.registry)
 
-    betaSuppressExtensions = [
-        'VK_EXT_opacity_micromap',
-        'VK_KHR_pipeline_library',
-    ]
+    for platform in sorted(deps.platformExts):
+        alldeps = set()
+        exts = set(deps.platformExts[platform])
 
-    platforms = [
-        [ 'vulkan_android.h',     [ 'VK_KHR_android_surface',
-                                    'VK_ANDROID_external_memory_android_hardware_buffer',
-                                    'VK_ANDROID_external_format_resolve'
-                                                                  ], commonSuppressExtensions +
-                                                                     [ 'VK_KHR_format_feature_flags2',
-                                                                     ] ],
-        [ 'vulkan_fuchsia.h',     [ 'VK_FUCHSIA_imagepipe_surface',
-                                    'VK_FUCHSIA_external_memory',
-                                    'VK_FUCHSIA_external_semaphore',
-                                    'VK_FUCHSIA_buffer_collection' ], commonSuppressExtensions ],
-        [ 'vulkan_ggp.h',         [ 'VK_GGP_stream_descriptor_surface',
-                                    'VK_GGP_frame_token'          ], commonSuppressExtensions ],
-        [ 'vulkan_ios.h',         [ 'VK_MVK_ios_surface'          ], commonSuppressExtensions ],
-        [ 'vulkan_macos.h',       [ 'VK_MVK_macos_surface'        ], commonSuppressExtensions ],
-        [ 'vulkan_vi.h',          [ 'VK_NN_vi_surface'            ], commonSuppressExtensions ],
-        [ 'vulkan_wayland.h',     [ 'VK_KHR_wayland_surface'      ], commonSuppressExtensions ],
-        [ 'vulkan_ubm.h',         [ 'VK_SEC_ubm_surface'          ], commonSuppressExtensions ],
-        [ 'vulkan_win32.h',       [ 'VK_.*_win32(|_.*)', 'VK_.*_winrt(|_.*)', 'VK_EXT_full_screen_exclusive' ],
-                                                                     commonSuppressExtensions +
-                                                                     [ 'VK_KHR_external_semaphore',
-                                                                       'VK_KHR_external_memory_capabilities',
-                                                                       'VK_KHR_external_fence',
-                                                                       'VK_KHR_external_fence_capabilities',
-                                                                       'VK_KHR_get_surface_capabilities2',
-                                                                       'VK_NV_external_memory_capabilities',
-                                                                     ] ],
-        [ 'vulkan_xcb.h',         [ 'VK_KHR_xcb_surface'          ], commonSuppressExtensions ],
-        [ 'vulkan_xlib.h',        [ 'VK_KHR_xlib_surface'         ], commonSuppressExtensions ],
-        [ 'vulkan_directfb.h',    [ 'VK_EXT_directfb_surface'     ], commonSuppressExtensions ],
-        [ 'vulkan_xlib_xrandr.h', [ 'VK_EXT_acquire_xlib_display' ], commonSuppressExtensions ],
-        [ 'vulkan_metal.h',       [ 'VK_EXT_metal_surface',
-                                    'VK_EXT_metal_objects',
-                                    'VK_EXT_external_memory_metal' ], commonSuppressExtensions ],
-        [ 'vulkan_ohos.h',        [ 'VK_OHOS_surface',
-                                    'VK_OHOS_native_buffer',
-                                    'VK_OHOS_external_memory' ], commonSuppressExtensions ],
-        [ 'vulkan_screen.h',      [ 'VK_QNX_screen_surface',
-                                    'VK_QNX_external_memory_screen_buffer' ], commonSuppressExtensions ],
-        [ 'vulkan_sci.h',         [ 'VK_NV_external_sci_sync',
-                                    'VK_NV_external_sci_sync2',
-                                    'VK_NV_external_memory_sci_buf'], commonSuppressExtensions ],
-        [ 'vulkan_beta.h',        betaRequireExtensions,             betaSuppressExtensions ],
-    ]
+        # Track all extensions in platform headers, to exclude them from
+        # core headers.
+        allPlatformExtensions |= exts
 
-    for platform in platforms:
-        headername = platform[0]
+        # Combine direct dependencies and interactions of each platform
+        # extension
+        for ext in sorted(exts):
+            interactions = deps.interactions(ext)
+            alldeps |= interactions
 
-        allPlatformExtensions += platform[1]
+        # Remove interactions which are in the set of platform extensions
+        alldeps -= exts
 
-        addPlatformExtensionsRE = makeREstring(
-            platform[1] + platform[2], strings_are_regex=True)
-        emitPlatformExtensionsRE = makeREstring(
-            platform[1], strings_are_regex=True)
+        if platform == 'provisional':
+            headername = 'vulkan_beta.h'
+        else:
+            headername = f'vulkan_{platform}.h'
+
+        addPlatformExtensionsRE = makeREstring(exts | alldeps)
+        emitPlatformExtensionsRE = makeREstring(exts)
 
         opts = CGeneratorOptions(
             conventions       = conventions,
@@ -526,6 +490,9 @@ def makeGenOpts(args):
             addExtensions     = addPlatformExtensionsRE,
             removeExtensions  = removeExtensionsPat,
             emitExtensions    = emitPlatformExtensionsRE,
+            # Platform extensions set respectAllowDepends so they do not
+            # pull in definitions that are duplicated in vulkan_core.h.
+            respectAllowDepends = True,
             prefixText        = prefixStrings + vkPrefixStrings,
             genFuncPointers   = True,
             protectFile       = protectFile,
@@ -552,7 +519,7 @@ def makeGenOpts(args):
     # constructed above) as well as any explicitly specified removals.
 
     removeExtensionsPat = makeREstring(
-        allPlatformExtensions + removeExtensions, None, strings_are_regex=True)
+        allPlatformExtensions | removeExtensions, None, strings_are_regex=True)
 
     genOpts['vulkan_core.h'] = [
           COutputGenerator,
@@ -898,6 +865,7 @@ def genTarget(args):
         logDiag('* options.emitExtensions    =', options.emitExtensions)
         logDiag('* options.emitSpirv         =', options.emitSpirv)
         logDiag('* options.emitFormats       =', options.emitFormats)
+        logDiag('* options.emitDynamicState  =', options.emitDynamicState)
 
         gen = createGenerator(errFile=errWarn,
                               warnFile=errWarn,
@@ -939,6 +907,9 @@ if __name__ == '__main__':
     parser.add_argument('-emitFormats', action='append',
                         default=[],
                         help='Specify Vulkan Formats to emit in targets')
+    parser.add_argument('-emitDynamicState', action='append',
+                        default=[],
+                        help='Specify VkDynamicState to emit in targets')
     parser.add_argument('-feature', action='append',
                         default=[],
                         help='Specify a core API feature name or names to add to targets')
@@ -957,8 +928,8 @@ if __name__ == '__main__':
     parser.add_argument('-profile', action='store_true',
                         help='Enable profiling')
     parser.add_argument('-registry', action='store',
-                        default='vk.xml',
-                        help='Use specified registry file instead of vk.xml')
+                        default=APIConventions().registry_path,
+                        help=f'Use specified registry file (default {APIConventions().registry_path})')
     parser.add_argument('-time', action='store_true',
                         help='Enable timing')
     parser.add_argument('-genpath', action='store', default='gen',
@@ -982,9 +953,15 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # This splits arguments which are space-separated lists
-    args.feature = [name for arg in args.feature for name in arg.split()]
-    args.extension = [name for arg in args.extension for name in arg.split()]
+    # Splits arguments which are space-separated lists.
+    # Convert lists of names into sets, since argparse does not support
+    # that.
+    args.feature = set(name for arg in args.feature for name in arg.split())
+    args.extension = set(name for arg in args.extension for name in arg.split())
+    args.removeExtensions = set(args.removeExtensions)
+    args.emitExtensions = set(args.emitExtensions)
+    #args.emitSpirv   = set(args.emitSpirv)
+    #args.emitFormats = set(args.emitFormats)
 
     # create error/warning & diagnostic files
     if args.errfile:

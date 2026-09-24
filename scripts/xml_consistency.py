@@ -125,6 +125,8 @@ CHECK_PARAM_POINTER_NAME_EXCEPTIONS = {
 CHECK_MEMBER_PNEXT_OPTIONAL_EXCEPTIONS = set((
     'VkVideoEncodeInfoKHR',
     'VkVideoEncodeRateControlLayerInfoKHR',
+    # https://gitlab.khronos.org/vulkan/vulkan/-/merge_requests/8561
+    'VkPipelineCreateInfoKHR',
 ))
 
 # Exceptions to pNext member 'const' checks

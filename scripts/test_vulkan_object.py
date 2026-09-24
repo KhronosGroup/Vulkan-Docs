@@ -101,6 +101,12 @@ class MyGenerator(BaseGenerator):
                 assert isinstance(plane, FormatPlane)
             for extent in format.blockExtent:
                 assert isinstance(extent, str)
+        for dynamicState in self.vk.dynamicStates.values():
+            assert isinstance(dynamicState, DynamicState)
+            for command in dynamicState.commands:
+                assert isinstance(command, DynamicStateCommand)
+            for subStates in dynamicState.pipelineSubStates:
+                assert isinstance(subStates, str)
         for funcPointer in self.vk.funcPointers.values():
             assert isinstance(funcPointer, FuncPointer)
             for param in funcPointer.params:
@@ -177,7 +183,7 @@ def initVulkanObject(output_dir: str, output_file: str, target_api: str, merged_
     tree = ElementTree.parse(xml_path)
     reg.loadElementTree(tree)
     reg.apiGen()
-    
+
     return generator.vk
 
 # Test VulkanObject initialization

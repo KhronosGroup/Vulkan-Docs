@@ -260,35 +260,43 @@ class COutputGenerator(OutputGenerator):
                 if self.genOpts.conventions.writeFeature(self.featureName, self.featureExtraProtect, self.genOpts.filename):
                     self.newline()
                     if self.genOpts.protectFeature:
-                        write('#ifndef', self.featureName, file=self.outFile)
+                        write(f'#ifndef {self.featureName}', file=self.outFile)
 
                     # If type declarations are needed by other features based on
                     # this one, it may be necessary to suppress the ExtraProtect,
                     # or move it below the 'for section...' loop.
                     if self.featureExtraProtect is not None:
-                        write('#ifdef', self.featureExtraProtect, file=self.outFile)
+                        write(f'#ifdef {self.featureExtraProtect}', file=self.outFile)
                     self.newline()
 
                     # Generate warning of possible use in IDEs
                     write(f'// {self.featureName} is a preprocessor guard. Do not pass it to API calls.', file=self.outFile)
-                    write('#define', self.featureName, '1', file=self.outFile)
+                    write(f'#define {self.featureName} 1', file=self.outFile)
+
+                    def emitSection(section):
+                        lines = self.sections[section]
+                        if len(lines) > 0:
+                            # Insert whitespace before each section
+                            if not lines[0].startswith('\n'):
+                                self.newline()
+                            for line in self.sections[section]:
+                                write(line, end='', file=self.outFile)
+
                     for section in self.TYPE_SECTIONS:
-                        contents = self.sections[section]
-                        if contents:
-                            write('\n'.join(contents), file=self.outFile)
+                        emitSection(section)
 
-                    if self.genOpts.genFuncPointers and self.sections['commandPointer']:
-                        write('\n'.join(self.sections['commandPointer']), file=self.outFile)
+                    if self.genOpts.genFuncPointers and len(self.sections['commandPointer']) > 0:
+                        emitSection('commandPointer')
+
+                    if len(self.sections['command']) > 0:
                         self.newline()
-
-                    if self.sections['command']:
                         if self.genOpts.protectProto:
                             write(self.genOpts.protectProto,
                                   self.genOpts.protectProtoStr, file=self.outFile)
                         if self.genOpts.protectExtensionProto and not is_core:
                             write(self.genOpts.protectExtensionProto,
                                   self.genOpts.protectExtensionProtoStr, file=self.outFile)
-                        write('\n'.join(self.sections['command']), end='', file=self.outFile)
+                        emitSection('command')
                         if self.genOpts.protectExtensionProto and not is_core:
                             write('#endif' +
                                   self._endProtectComment(protect_directive=self.genOpts.protectExtensionProto,
@@ -299,8 +307,6 @@ class COutputGenerator(OutputGenerator):
                                   self._endProtectComment(protect_directive=self.genOpts.protectProto,
                                                           protect_str=self.genOpts.protectProtoStr),
                                   file=self.outFile)
-                        else:
-                            self.newline()
 
                     if self.featureExtraProtect is not None:
                         write('#endif' +
@@ -317,6 +323,9 @@ class COutputGenerator(OutputGenerator):
     def appendSection(self, section, text):
         "Append a definition to the specified section"
 
+        if text == '':
+            return
+
         if section is None:
             self.logMsg('error', 'Missing section in appendSection (probably a <type> element missing its \'category\' attribute. Text:', text)
             exit(1)
@@ -324,7 +333,7 @@ class COutputGenerator(OutputGenerator):
         self.sections[section].append(text)
         self.feature_not_empty = True
 
-    def genType(self, typeinfo, name, alias):
+    def genType(self, typeinfo, name, alias, protect=None):
         "Generate type."
         OutputGenerator.genType(self, typeinfo, name, alias)
         typeElem = typeinfo.elem
@@ -344,7 +353,7 @@ class COutputGenerator(OutputGenerator):
         if category in ('struct', 'union'):
             # If the type is a struct type, generate it using the
             # special-purpose generator.
-            self.genStruct(typeinfo, name, alias)
+            self.genStruct(typeinfo, name, alias, protect)
         else:
             if self.genOpts is None:
                 raise MissingGeneratorOptionsError()
@@ -354,7 +363,7 @@ class COutputGenerator(OutputGenerator):
             # OpenXR: this section was not under 'else:' previously, just fell through
             if alias:
                 # If the type is an alias, just emit a typedef declaration
-                body += f"typedef {alias} {name};\n"
+                body += f"typedef {alias} {name};"
             elif category == 'funcpointer':
                 # Only include the typedef
                 decls = self.makeCDecls(typeElem)
@@ -371,11 +380,16 @@ class COutputGenerator(OutputGenerator):
                         body += noneStr(elem.text) + noneStr(elem.tail)
                 if category == 'define' and self.misracppstyle():
                     body = body.replace("(uint32_t)", "static_cast<uint32_t>")
-            if body:
-                # Add extra newline after multi-line entries.
-                if '\n' in body[0:-1]:
-                    body += '\n'
-                self.appendSection(section, body)
+
+            # Empty body can happen with stub types like uint32_t
+            if body != '' and not body.endswith('\n'):
+                body += '\n'
+
+            if protect is not None:
+                (api_protect_begin, api_protect_end) = self.genProtectString(protect)
+                body = api_protect_begin + body + api_protect_end
+
+            self.appendSection(section, body)
 
     def genProtectString(self, protect_str):
         """Generate protection string.
@@ -442,7 +456,7 @@ class COutputGenerator(OutputGenerator):
                                       if x is not None))
         return typeName in self.may_alias
 
-    def genStruct(self, typeinfo, typeName, alias):
+    def genStruct(self, typeinfo, typeName, alias, protect=None):
         """Generate struct (e.g. C "struct" type).
 
         This is a special case of the <type> tag where the contents are
@@ -463,7 +477,7 @@ class COutputGenerator(OutputGenerator):
         body = self.deprecationComment(typeElem)
 
         if alias:
-            body += f"typedef {alias} {typeName};\n"
+            body += f"typedef {alias} {typeName};"
         else:
             (protect_begin, protect_end) = self.genProtectString(typeElem.get('protect'))
             if protect_begin:
@@ -492,9 +506,19 @@ class COutputGenerator(OutputGenerator):
             if protect_end:
                 body += protect_end
 
+        if not body.endswith('\n'):
+            body += '\n'
+
+        if protect is not None:
+            (api_protect_begin, api_protect_end) = self.genProtectString(protect)
+            body = api_protect_begin + body + api_protect_end
+
+        # Add whitespace after each struct declaration
+        body += '\n'
+
         self.appendSection('struct', body)
 
-    def genGroup(self, groupinfo, groupName, alias=None):
+    def genGroup(self, groupinfo, groupName, alias=None, protect=None):
         """Generate groups (e.g. C "enum" type).
 
         These are concatenated together with other types.
@@ -511,18 +535,28 @@ class COutputGenerator(OutputGenerator):
         else:
             section = 'group'
 
+        api_protect_begin = api_protect_end = ''
+        if protect is not None:
+            (api_protect_begin, api_protect_end) = self.genProtectString(protect)
+
         if alias:
             # If the group name is aliased, just emit a typedef declaration
             # for the alias.
-            body = f"typedef {alias} {groupName};\n"
+            body = f'typedef {alias} {groupName};\n'
+            body = api_protect_begin + body + api_protect_end
             self.appendSection(section, body)
         else:
             if self.genOpts is None:
                 raise MissingGeneratorOptionsError()
             (section, body) = self.buildEnumCDecl(self.genOpts.genEnumBeginEndRange, groupinfo, groupName)
-            self.appendSection(section, f"\n{body}")
 
-    def genEnum(self, enuminfo, name, alias):
+            if not body.endswith('\n'):
+                body += '\n'
+
+            body = '\n' + api_protect_begin + body + api_protect_end
+            self.appendSection(section, body)
+
+    def genEnum(self, enuminfo, name, alias, protect=None):
         """Generate the C declaration for a constant (a single <enum> value).
 
         <enum> tags may specify their values in several ways, but are usually
@@ -532,9 +566,17 @@ class COutputGenerator(OutputGenerator):
 
         body = self.deprecationComment(enuminfo.elem)
         body += self.buildConstantCDecl(enuminfo, name, alias)
+
+        if not body.endswith('\n'):
+            body += '\n'
+
+        if protect is not None:
+            (api_protect_begin, api_protect_end) = self.genProtectString(protect)
+            body = api_protect_begin + body + api_protect_end
+
         self.appendSection('enum', body)
 
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         "Command generation"
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
@@ -554,17 +596,20 @@ class COutputGenerator(OutputGenerator):
         # prototype not appear at compile time.
 
         export = cmdinfo.elem.get('export','')
-        protect_prefix = protect_suffix = ''
+        export_protect_begin = export_protect_end = ''
         if export is None or self.genOpts.protectExportName not in export.split(','):
             if self.genOpts.protectExportProtoStr is not None:
                 # Command is not exported, so should not be visible if
                 # suppressed by this symbol
-                protect_prefix = f'#ifndef {self.genOpts.protectExportProtoStr}\n'
-                protect_suffix = '\n#endif'
+                export_protect_begin = f'#ifndef {self.genOpts.protectExportProtoStr}\n'
+                export_protect_end = '#endif\n'
 
-        decls[0] = protect_prefix + decls[0] + protect_suffix
+        (api_protect_begin, api_protect_end) = self.genProtectString(protect)
 
-        self.appendSection('command', f"{prefix + decls[0]}\n")
+        decls[0] = export_protect_begin + api_protect_begin + decls[0] + '\n' + api_protect_end + export_protect_end
+        decls[1] = api_protect_begin + decls[1] + '\n' + api_protect_end
+
+        self.appendSection('command', decls[0])
         if self.genOpts.genFuncPointers:
             self.appendSection('commandPointer', decls[1])
 

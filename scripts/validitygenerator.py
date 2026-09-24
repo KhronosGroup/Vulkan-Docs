@@ -1604,7 +1604,7 @@ endif::VK_KHR_internally_synchronized_queues[]"""
 
         return lines
 
-    def genCmd(self, cmdinfo, name, alias):
+    def genCmd(self, cmdinfo, name, alias, protect=None):
         """Command generation."""
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
@@ -1638,7 +1638,7 @@ endif::VK_KHR_internally_synchronized_queues[]"""
                           successcodes,
                           errorcodes)
 
-    def genStruct(self, typeinfo, typeName, alias):
+    def genStruct(self, typeinfo, typeName, alias, protect=None):
         """Struct Generation."""
         OutputGenerator.genStruct(self, typeinfo, typeName, alias)
 
@@ -1674,7 +1674,7 @@ endif::VK_KHR_internally_synchronized_queues[]"""
                           errorcodes = None,
                           structextends = structextends)
 
-    def genGroup(self, groupinfo, groupName, alias):
+    def genGroup(self, groupinfo, groupName, alias, protect=None):
         """Group (e.g. C "enum" type) generation.
         For the validity generator, this just tags individual enumerants
         as required or not.
@@ -1700,7 +1700,7 @@ endif::VK_KHR_internally_synchronized_queues[]"""
             # Tag enumerant as required or not
             ei.required = self.isEnumRequired(elem)
 
-    def genType(self, typeinfo, name, alias):
+    def genType(self, typeinfo, name, alias, protect=None):
         """Type Generation."""
         OutputGenerator.genType(self, typeinfo, name, alias)
 

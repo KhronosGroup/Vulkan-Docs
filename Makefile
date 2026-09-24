@@ -151,7 +151,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 363
+PATCHVERSION = 364
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -299,6 +299,7 @@ INTERFACEPATH  = $(GENERATED)/interfaces
 SPIRVCAPPATH   = $(GENERATED)/spirvcap
 FORMATSPATH    = $(GENERATED)/formats
 SYNCPATH       = $(GENERATED)/sync
+DYNAMICSTATEPATH = $(GENERATED)/dynamicstate
 PROPOSALPATH   = $(SPECDIR)/proposals
 # timeMarker is a proxy target created when many generated files are
 # made at once
@@ -310,11 +311,12 @@ INTERFACEDEPEND = $(INTERFACEPATH)/timeMarker
 SPIRVCAPDEPEND = $(SPIRVCAPPATH)/timeMarker
 FORMATSDEPEND = $(FORMATSPATH)/timeMarker
 SYNCDEPEND = $(SYNCPATH)/timeMarker
+DYNAMICSTATEDEPEND = $(DYNAMICSTATEPATH)/timeMarker
 REQSDEPEND = $(GENERATED)/featurerequirements.adoc
 RUBYDEPEND     = $(RBAPIMAP)
 ATTRIBFILE     = $(GENERATED)/specattribs.adoc
 # All generated dependencies
-GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(SYNCDEPEND) $(REQSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
+GENDEPENDS     = $(APIDEPEND) $(VALIDITYDEPEND) $(HOSTSYNCDEPEND) $(METADEPEND) $(INTERFACEDEPEND) $(SPIRVCAPDEPEND) $(FORMATSDEPEND) $(SYNCDEPEND) $(DYNAMICSTATEDEPEND) $(REQSDEPEND) $(RUBYDEPEND) $(ATTRIBFILE)
 # All non-format-specific dependencies
 COMMONDOCS     = $(SPECFILES) $(GENDEPENDS)
 
@@ -794,6 +796,12 @@ $(SYNCDEPEND): $(VKXML) $(GENVK)
 	$(QUIET)$(MKDIR) $(SYNCPATH)
 	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(SYNCPATH) syncinc
 
+dynamicstateinc: $(DYNAMICSTATEDEPEND)
+
+$(DYNAMICSTATEDEPEND): $(VKXML) $(GENVK)
+	$(QUIET)$(MKDIR) $(DYNAMICSTATEPATH)
+	$(QUIET)$(PYTHON) $(GENVK) $(GENVKOPTS) -o $(DYNAMICSTATEPATH) dynamicstateinc
+
 # Generate all Antora module content
 # After the targets are built, the $(JSXREFMAP) and $(JSPAGEMAP) files
 # used by spec macros in the Antora build must be copied into the Antora
@@ -957,6 +965,7 @@ CLEAN_GEN_PATHS = \
     $(SPIRVCAPPATH) \
     $(FORMATSPATH) \
     $(SYNCPATH) \
+    $(DYNAMICSTATEPATH) \
     $(REFPATH) \
     $(GENERATED)/include \
     $(GENERATED)/__pycache__ \

@@ -188,10 +188,12 @@ class GeneratorOptions:
                  emitExtensions=None,
                  emitSpirv=None,
                  emitFormats=None,
+                 emitDynamicState=None,
                  reparentEnums=True,
                  sortProcedure=regSortFeatures,
                  requireCommandAliases=False,
                  requireDepends=True,
+                 respectAllowDepends=False,
                 ):
         """Constructor.
 
@@ -228,6 +230,7 @@ class GeneratorOptions:
         to actually emit interfaces for.
         - emitFormats - regex matching names of formats to actually emit
         interfaces for.
+        - emitDynamicState - regex matching names of VkDynamicState to actually emit.
         - reparentEnums - move <enum> elements which extend an enumerated
         type from <feature> or <extension> elements to the target <enums>
         element. This is required for almost all purposes, but the
@@ -239,6 +242,8 @@ class GeneratorOptions:
         as required dependencies.
         - requireDepends - whether to follow API dependencies when emitting
         APIs.
+        - respectAllowDepends - whether to generate only API dependencies
+        which are explicitly passed to generateFeature.
 
         Default is
           - core API versions
@@ -310,6 +315,10 @@ class GeneratorOptions:
         """regex matching names of formats
         to actually emit interfaces for."""
 
+        self.emitDynamicState = self.emptyRegex(emitDynamicState)
+        """regex matching names of VkDynamicState
+        to actually emit interfaces for."""
+
         self.reparentEnums = reparentEnums
         """boolean specifying whether to remove <enum> elements from
         <feature> or <extension> when extending an <enums> type."""
@@ -332,6 +341,10 @@ class GeneratorOptions:
 
         self.requireDepends = requireDepends
         """True if dependencies of API tags are transitively required."""
+
+        self.respectAllowDepends = respectAllowDepends
+        """True if the list of explicitly allowed dependencies of API tags
+           passed to generateFeature is respected."""
 
     def emptyRegex(self, pat):
         """Substitute a regular expression which matches no version
@@ -1036,7 +1049,7 @@ class OutputGenerator:
             raise UserWarning('Attempt to generate', featureType,
                               featureName, 'when not in feature')
 
-    def genType(self, typeinfo, name, alias):
+    def genType(self, typeinfo, name, alias, protect = None):
         """Generate interface for a type
 
         - typeinfo - TypeInfo for a type
@@ -1044,7 +1057,7 @@ class OutputGenerator:
         Extend to generate as desired in your derived class."""
         self.validateFeature('type', name)
 
-    def genStruct(self, typeinfo, typeName, alias):
+    def genStruct(self, typeinfo, typeName, alias, protect = None):
         """Generate interface for a C "struct" type.
 
         - typeinfo - TypeInfo for a type interpreted as a struct
@@ -1059,7 +1072,7 @@ class OutputGenerator:
             for comment in member.findall('comment'):
                 member.remove(comment)
 
-    def genGroup(self, groupinfo, groupName, alias):
+    def genGroup(self, groupinfo, groupName, alias, protect = None):
         """Generate interface for a group of enums (C "enum")
 
         - groupinfo - GroupInfo for a group.
@@ -1068,7 +1081,7 @@ class OutputGenerator:
 
         self.validateFeature('group', groupName)
 
-    def genEnum(self, enuminfo, typeName, alias):
+    def genEnum(self, enuminfo, typeName, alias, protect = None):
         """Generate interface for an enum (constant).
 
         - enuminfo - EnumInfo for an enum
@@ -1077,7 +1090,7 @@ class OutputGenerator:
         Extend to generate as desired in your derived class."""
         self.validateFeature('enum', typeName)
 
-    def genCmd(self, cmd, cmdinfo, alias):
+    def genCmd(self, cmd, cmdinfo, alias, protect = None):
         """Generate interface for a command.
 
         - cmdinfo - CmdInfo for a command
@@ -1085,7 +1098,7 @@ class OutputGenerator:
         Extend to generate as desired in your derived class."""
         self.validateFeature('command', cmdinfo)
 
-    def genSpirv(self, spirv, spirvinfo, alias):
+    def genSpirv(self, spirv, spirvinfo, alias, protect = None):
         """Generate interface for a spirv element.
 
         - spirvinfo - SpirvInfo for a command
@@ -1093,10 +1106,18 @@ class OutputGenerator:
         Extend to generate as desired in your derived class."""
         return
 
-    def genFormat(self, format, formatinfo, alias):
+    def genFormat(self, format, formatinfo, alias, protect = None):
         """Generate interface for a format element.
 
         - formatinfo - FormatInfo
+
+        Extend to generate as desired in your derived class."""
+        return
+
+    def genDynamicState(self, element):
+        """Generate interface for a dynamicstate element.
+
+        - element - <dynamicstate>
 
         Extend to generate as desired in your derived class."""
         return

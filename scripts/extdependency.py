@@ -98,15 +98,18 @@ class ApiDependencies:
         extensions supported for that API are considered.
         """
 
-        conventions = APIConventions()
+        self.conventions = APIConventions()
         if registry_path is None:
-            registry_path = conventions.registry_path
+            registry_path = self.conventions.registry_path
         if api_name is None:
-            api_name = conventions.xml_api_name
+            api_name = self.conventions.xml_api_name
 
+        # Sets of all, KHR, and ratified extensions
         self.allExts = set()
         self.khrExts = set()
         self.ratifiedExts = set()
+        # Sets of extensions for each platform, keyed by platform name.
+        self.platformExts = {}
         self.versions = set()
         self.graph = DiGraph()
         self.extensions = {}
@@ -126,6 +129,15 @@ class ApiDependencies:
                     for dep in dependencyNames(depends):
                         self.graph.add_edge(name, dep)
 
+        # All <platform> tags are included, although the sets are empty if
+        # no extensions are tagged for that platform.
+        # This is needed so that we continue to generate (empty) headers for
+        # VulkanSC.
+        for elem in self.tree.findall('platforms/platform'):
+            name = elem.get('name')
+            protect = elem.get('protect')
+            self.platformExts[name] = set()
+
         # Loop over all supported extensions, creating a digraph of the
         # extension dependencies in the 'depends' attribute, which is a
         # boolean expression of core version and extension names.
@@ -141,15 +153,22 @@ class ApiDependencies:
             name = elem.get('name')
             supported = elem.get('supported')
             ratified = elem.get('ratified', '')
+            platform = elem.get('platform', None)
 
             if api_name in supported.split(','):
                 self.allExts.add(name)
 
-                if conventions.KHR_prefix in name:
+                if self.conventions.KHR_prefix in name:
                     self.khrExts.add(name)
 
                 if api_name in ratified.split(','):
                     self.ratifiedExts.add(name)
+
+                # Track names of extensions in each platform separately
+                if platform is not None:
+                    if platform not in self.platformExts:
+                        raise Exception(f'Extension {name} is tagged for platform {platform}, which is not in the XML')
+                    self.platformExts[platform].add(name)
 
                 self.graph.add_node(name)
 
@@ -160,7 +179,7 @@ class ApiDependencies:
                     for dep in dependencyNames(depends):
                         # Filter out version names, which are explicitly
                         # specified when building a specification.
-                        if not conventions.is_api_version_name(dep):
+                        if not self.conventions.is_api_version_name(dep):
                             self.graph.add_edge(name, dep)
             else:
                 # Skip unsupported extensions
@@ -183,13 +202,46 @@ class ApiDependencies:
         return self.versions
 
     def children(self, extension):
-        """Returns a set of the dependencies of an extension.
-           Throws an exception if the extension is not in the graph."""
+        """Returns a set of the direct and indirect dependencies of an
+           extension.
+           Throws an exception if the extension is not in the dependency
+           graph."""
 
         if extension not in self.allExts:
             raise Exception(f'Extension {extension} not found in XML!')
 
         return set(self.graph.descendants(extension))
+
+    def interactions(self, extension):
+        """Returns a set of the direct interactions of an extension.
+           These are from depends attributes of the <extension> and its
+           <require> tags.
+           Throws an exception if the extension is not in the graph."""
+
+        if extension not in self.allExts:
+            raise Exception(f'Extension {extension} not found in XML!')
+
+        interactions = set()
+
+        ext_elem = self.tree.find(f"extensions/extension[@name='{extension}']")
+        if ext_elem is None:
+            return interactions
+
+        def add_depends(dependset, dependexpr):
+            if dependexpr is not None:
+                for depname in dependencyNames(dependexpr):
+                    # Filter out version names, which are explicitly
+                    # specified when building a specification.
+                    if not self.conventions.is_api_version_name(depname):
+                        dependset.add(depname)
+
+        # <extension depends=>
+        add_depends(interactions, ext_elem.get('depends'))
+        # <require depends=>
+        for elem in ext_elem.findall('require'):
+            add_depends(interactions, elem.get('depends'))
+
+        return interactions
 
     def versionChildren(self, version):
         """Returns a set of the dependencies of a version.
@@ -207,27 +259,53 @@ if __name__ == '__main__':
 
     parser.add_argument('-registry', action='store',
                         default=APIConventions().registry_path,
-                        help=f"Use specified registry file instead of {APIConventions().registry_path}")
+                        help=f'Use specified registry file instead of {APIConventions().registry_path}')
     parser.add_argument('-loops', action='store',
-                        default=10, type=int,
+                        default=0, type=int,
                         help='Number of timing loops to run')
-    parser.add_argument('-test', action='store',
-                        default=None,
-                        help='Specify extension to find dependencies of')
 
     args = parser.parse_args()
 
     deps = ApiDependencies(args.registry)
     print('KHR exts =', sorted(deps.khrExtensions()))
     print('Ratified exts =', sorted(deps.ratifiedExtensions()))
+    print('Platforms =', sorted(deps.platformExts.keys()))
 
-    import time
-    startTime = time.process_time()
+    print('platforms = [')
 
-    for loop in range(args.loops):
-        deps = ApiDependencies(args.registry)
+    for platform in sorted(deps.platformExts):
+        alldeps = set()
+        exts = set(deps.platformExts[platform])
 
-    endTime = time.process_time()
+        # print(f'Platform {platform} has direct interactions:')
+        for ext in sorted(exts):
+            interactions = deps.interactions(ext)
+            if len(interactions) > 0:
+                alldeps |= interactions
+                # print(f'    {ext} -> {interactions}')
 
-    deltaT = endTime - startTime
-    print(f'Total time = {deltaT} time/loop = {deltaT / args.loops}')
+        # Remove interactions which are in the set of platform extensions
+        alldeps -= exts
+
+        # print(f'    All platform interactions = {sorted(alldeps)}')
+
+        if platform == 'provisional':
+            filename = 'vulkan_beta.h'
+        else:
+            filename = f'vulkan_{platform}.h'
+
+        print(f"    [ '{filename}',")
+        print(f"      {exts},")
+        print(f"      {alldeps - exts} ],")
+
+    if args.loops > 0:
+        import time
+        startTime = time.process_time()
+
+        for loop in range(args.loops):
+            deps = ApiDependencies(args.registry)
+
+        endTime = time.process_time()
+
+        deltaT = endTime - startTime
+        print(f'Total time = {deltaT} time/loop = {deltaT / args.loops}')
