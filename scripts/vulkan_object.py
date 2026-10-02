@@ -581,7 +581,7 @@ class DynamicState:
     pipelineSubStates: list[str]
     # If the dynamic state is ignored when rasterizerDiscardEnable is VK_FALSE
     requiresRasterization: bool
-    # The VkDynamicState that is required for this dynamic state to be active
+    # The name of another DynamicState that is required for this dynamic state to be active (ex. depthBiasEnable)
     stateRequired: (str | None)
     # Unique string to identify some complex state required for this dynamic state to be active
     specialRequired: (str | None)

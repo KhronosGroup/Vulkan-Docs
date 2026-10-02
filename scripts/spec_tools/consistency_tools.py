@@ -253,8 +253,8 @@ class XMLChecker:
 
         self.check_format()
 
-        entities_with_messages = set(
-            self.errors.keys()).union(self.warnings.keys())
+        entities_with_messages = sorted(set(
+            self.errors.keys()).union(self.warnings.keys()))
         if entities_with_messages:
             print('xml_consistency/consistency_tools error and warning messages follow.')
 
