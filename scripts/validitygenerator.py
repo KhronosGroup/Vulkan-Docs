@@ -20,6 +20,13 @@ from spec_tools.util import (findNamedElem, findNamedObject, findTypedElem,
                              getElemName, getElemType)
 from spec_tools.validity import ValidityCollection, ValidityEntry
 
+# Structures that other structures extend, but which are not a normal "base" structure
+STRUCTEXTENDS_KEEP_PNEXT_VALIDITY = set((
+    # https://gitlab.khronos.org/vulkan/vulkan/-/merge_requests/8561
+    'VkPipelineCreateInfoKHR',
+))
+
+
 class UnhandledCaseError(NotImplementedError):
     def __init__(self, msg=None):
         if msg:
@@ -1091,7 +1098,8 @@ class ValidityOutputGenerator(OutputGenerator):
 
             if self.conventions.is_nextpointer_member(paramtype, param_name):
                 # Vulkan: the addition of validity here is conditional unlike OpenXR.
-                if struct.get('structextends') is None:
+                structextends = struct.get('structextends')
+                if structextends is None or set(structextends.split(',')) <= STRUCTEXTENDS_KEEP_PNEXT_VALIDITY:
                     validity += self.makeStructureExtensionPointer(
                         blockname, param)
                 return True

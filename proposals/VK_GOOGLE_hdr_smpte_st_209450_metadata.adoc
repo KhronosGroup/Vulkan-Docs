@@ -1,0 +1,94 @@
+// Copyright 2026 Google LLC
+// SPDX-License-Identifier: CC-BY-4.0
+
+= Proposal: VK_GOOGLE_hdr_smpte_st_209450_metadata
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:sectnums:
+
+This proposal defines a new device extension, `VK_GOOGLE_hdr_smpte_st_209450_metadata`, which allows applications to attach SMPTE ST 2094-50 dynamic metadata to a swapchain.
+
+== Problem Statement
+
+High Dynamic Range (HDR) video content often uses dynamic metadata to guide tone mapping on a frame-by-frame or scene-by-scene basis.
+The link:https://github.com/SMPTE/st2094-50[SMPTE ST 2094-50] standard defines such dynamic metadata.
+Vulkan currently supports static HDR metadata via the xref:{refpages}VK_EXT_hdr_metadata.html[`VK_EXT_hdr_metadata`] extension, which uses the xref:{refpages}VkHdrMetadataEXT.html[`VkHdrMetadataEXT`] structure.
+However, there is no mechanism in Vulkan to associate SMPTE ST 2094-50 dynamic metadata with swapchain images.
+
+Additionally, some presentation engines may have multiple implementations for applying the 2094-50 metadata. For example, a presentation engine on a mobile device may delegate tone mapping to a hardware accelerated block that has low color accuracy. That same presentation engine may also have a path to apply tone mapping through a high precision GPU shader, at the cost of power. There is currently no way to guide the presentation engine on how to apply this metadata (e.g., prioritizing power saving over color accuracy).
+
+== Solution Space
+
+There is prior art (see: xref:{refpages}VK_HUAWEI_hdr_vivid.html[`VK_HUAWEI_hdr_vivid`]) for extending the existing xref:{refpages}VkHdrMetadataEXT.html[`VkHdrMetadataEXT`] structure via its `pNext` chain to pass dynamic metadata.
+We follow this existing pattern.
+
+== Proposal
+
+We propose the `VK_GOOGLE_hdr_smpte_st_209450_metadata` extension.
+It depends on xref:{refpages}VK_EXT_hdr_metadata.html[`VK_EXT_hdr_metadata`] and xref:{refpages}VK_KHR_get_surface_capabilities2.html[`VK_KHR_get_surface_capabilities2`].
+
+=== New Structures
+
+`VkHdrSmpteSt209450GOOGLE` is introduced, which can be chained to the `pNext` member of xref:{refpages}VkHdrMetadataEXT.html[`VkHdrMetadataEXT`]:
+
+[source,c]
+----
+typedef struct VkHdrSmpteSt209450GOOGLE {
+    VkStructureType                           sType;
+    const void*                               pNext;
+    size_t                                    metadataSize;
+    const void*                               pMetadata;
+    VkHdrSmpteSt209450PowerPreferenceGOOGLE powerPreference;
+} VkHdrSmpteSt209450GOOGLE;
+----
+
+* `pMetadata` points to a buffer containing the `smpte_st_2094_50_application_info()` bitstream.
+* `metadataSize` is the size of the buffer.
+* `powerPreference` suggests a trade-off between color accuracy and power consumption.
+
+The `VkPhysicalDeviceHdrSmpteSt209450FeaturesGOOGLE` structure is introduced to query support from the xref:{refpages}VkPhysicalDevice.html[`VkPhysicalDevice`]:
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceHdrSmpteSt209450FeaturesGOOGLE {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           hdrSmpteSt209450;
+} VkPhysicalDeviceHdrSmpteSt209450FeaturesGOOGLE;
+----
+
+The `VkSurfaceCapabilitiesHdrSmpteSt209450GOOGLE` structure is introduced, which can be chained to the `pNext` member of xref:{refpages}VkSurfaceCapabilities2KHR.html[`VkSurfaceCapabilities2KHR`] to query per-surface support:
+
+[source,c]
+----
+typedef struct VkSurfaceCapabilitiesHdrSmpteSt209450GOOGLE {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           hdrSmpteSt209450Supported;
+} VkSurfaceCapabilitiesHdrSmpteSt209450GOOGLE;
+----
+
+=== New Enums
+
+[source,c]
+----
+typedef enum VkHdrSmpteSt209450PowerPreferenceGOOGLE {
+    VK_HDR_SMPTE_ST_209450_POWER_PREFERENCE_COLOR_ACCURACY_GOOGLE = 0,
+    VK_HDR_SMPTE_ST_209450_POWER_PREFERENCE_LOW_POWER_GOOGLE = 1,
+} VkHdrSmpteSt209450PowerPreferenceGOOGLE;
+----
+
+== Issues
+
+=== Issue 1: How is the bitstream validated?
+
+No validation is expected to be performed on the contents of the buffer pointed to by `pMetadata` by the Vulkan implementation. It is passed directly to the presentation engine.
+
+=== Issue 2: SMPTE 2094-50 metadata includes a family of tone-mapping curves associated with a target headroom. Should there also be mechanism to restrict the headroom?
+
+Headroom is a more general concept common to modern presentation engines, and may be composed with other mechanisms for displaying HDR (for example, source-based mechanisms). Therefore, a separate extension for querying and restricting headroom on a swapchain may be more appropriate.
+
+=== Issue 3: How will the presentation engine be validated that tone-mapping was correctly performed?
+
+Validating that tone-mapping matched the SMPTE 2094-50 specification is not in scope.

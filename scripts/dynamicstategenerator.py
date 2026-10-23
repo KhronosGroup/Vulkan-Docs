@@ -16,9 +16,19 @@ PIPELINE_SUB_STATE_NAMES = {
     'Fragment Output': 'Fragment Output',
 }
 
+# The anchors for the <statecondition special=""> explanations (shaders-special-*)
+# are defined in chapters/shaders.adoc, which only builds them when this
+# extension is enabled. Without it, name the condition without linking to it.
+SPECIAL_ANCHOR_REQUIRES = 'VK_EXT_shader_object'
+
 STATIC_STATE_FLAG_PROTOTYPE = {
     # TODO - Currently not static state here
 }
+
+def mergeRequirements(*reqs):
+    """Union of definingRequirements dicts (e.g. a name and its aliases), ignoring empty ones.
+    If the same extension appears in several with different 'depends', the last one wins."""
+    return {ext: depends for r in reqs if r for ext, depends in r.items()}
 
 class DynamicStateOutputGenerator(BaseGenerator):
     """
@@ -30,6 +40,11 @@ class DynamicStateOutputGenerator(BaseGenerator):
         self.errFile = errFile
         self.warnFile = warnFile
         self.diagFile = diagFile
+        # Filled in by prepare() once the registry has been generated
+        self.dynamicStateFields = {}
+        self.presentCommands = {}
+        self.commandAliases = {}
+        self.emittedStates = set()
 
     def writeBlock(self, basename, contents):
         filename = os.path.join(self.genOpts.directory, basename)
@@ -84,15 +99,57 @@ class DynamicStateOutputGenerator(BaseGenerator):
         cond = ",".join(exts)
         return [f"ifdef::{cond}[]"], [f"endif::{cond}[]"]
 
+    def prepare(self):
+        """Collect what exists in the API being generated, so the table only describes that."""
+        # VkDynamicState values by name, including their alias spellings
+        self.dynamicStateFields = {}
+        if 'VkDynamicState' in self.vk.enums:
+            for field in self.vk.enums['VkDynamicState'].fields:
+                self.dynamicStateFields[field.name] = field
+                self.dynamicStateFields.update({alias: field for alias in field.aliases})
+
+        # Commands aliasing each command (Command.alias only points the other way)
+        self.commandAliases = {}
+        for cmd in self.vk.commands.values():
+            if cmd.alias:
+                self.commandAliases.setdefault(cmd.alias, []).append(cmd)
+
+        # Only dynamic state with at least one command in the API being generated is
+        # included, so the table does not describe states which do not exist there.
+        self.presentCommands = {name: [cmd for cmd in ds.commands if cmd.name in self.vk.commands]
+                                for name, ds in self.vk.dynamicStates.items()}
+        self.emittedStates = {name for name, cmds in self.presentCommands.items() if cmds}
+
+    def commandRequirements(self, name):
+        """definingRequirements of a command together with those of any commands aliasing it."""
+        cmd = self.vk.commands.get(name)
+        if not cmd:
+            return {}
+        return mergeRequirements(cmd.definingRequirements,
+                                 *(alias.definingRequirements for alias in self.commandAliases.get(name, [])))
+
+    def enumRequirements(self, enumName):
+        """definingRequirements of a VkDynamicState value together with those of its aliases."""
+        field = self.dynamicStateFields.get(enumName)
+        if not field:
+            return {}
+        return mergeRequirements(field.definingRequirements,
+                                 *(self.vk.aliasFieldRequirements.get(alias) for alias in field.aliases))
+
     def getStateConditions(self, ds):
         """Returns the ifdef/endif lines wrapping a whole dynamic state.
-        Uses the VkDynamicState of the first command, as that is what defines when the state exists."""
-        if not (ds.commands and ds.commands[0].pipelineEnum and 'VkDynamicState' in self.vk.enums):
+        Uses the VkDynamicState and command of the first command, as that is what defines when the
+        state exists. Extensions which only alias them are included, so the state is shown when it
+        is available through any of them (this can make the condition broader than the core
+        version alone; each command in the row is still wrapped by its own condition)."""
+        commands = self.presentCommands[ds.name]
+        if not commands:
             return [], []
-        enum_field = next((f for f in self.vk.enums['VkDynamicState'].fields if f.name == ds.commands[0].pipelineEnum), None)
-        if not (enum_field and enum_field.definingRequirements):
+        reqs = mergeRequirements(self.enumRequirements(commands[0].pipelineEnum),
+                                 self.commandRequirements(commands[0].name))
+        if not reqs:
             return [], []
-        return self.getConditionLines(enum_field.definingRequirements)
+        return self.getConditionLines(reqs)
 
     def shaderStageName(self, ds):
         if ds.shaderStage == 'VK_SHADER_STAGE_ALL':
@@ -109,15 +166,58 @@ class DynamicStateOutputGenerator(BaseGenerator):
             return 'None'
         return ', '.join(PIPELINE_SUB_STATE_NAMES.get(sub_state, sub_state) for sub_state in ds.pipelineSubStates)
 
-    def dependsOn(self, ds):
-        """The other dynamic state and/or special condition this state is ignored without."""
-        deps = []
+    @staticmethod
+    def conditionalCell(conditions, linked, plain):
+        """Lines for one table cell shown as 'linked' when every ifdef in 'conditions' holds,
+        and as 'plain' otherwise.
+
+        'conditions' is a list of single 'ifdef::X[]' lines which must all hold (a conjunction), so
+        the complement is the first one which fails: ifdef the ones before it, ifndef it.
+        Preprocessor directives must be on their own line to be parsed."""
+        if not conditions or linked == plain:
+            return [f'| {linked}']
+
+        def endifs(opens):
+            return [line.replace('ifdef::', 'endif::', 1).replace('ifndef::', 'endif::', 1) for line in reversed(opens)]
+
+        lines = conditions + [f'| {linked}'] + endifs(conditions)
+        for i, condition in enumerate(conditions):
+            opens = conditions[:i] + [condition.replace('ifdef::', 'ifndef::', 1)]
+            lines += opens + [f'| {plain}'] + endifs(opens)
+        return lines
+
+    def dependsOn(self, ds, ds_open):
+        """Cell lines for the other dynamic state and/or special condition this state is ignored without.
+        Each is only linked where the anchor it links to exists in the build: a state's row only
+        exists when its own conditions hold, and the special condition anchors need
+        SPECIAL_ANCHOR_REQUIRES. Otherwise it is named without a link. ds_open is the row's own
+        conditions, which already hold wherever this cell is shown."""
+        linked = []
+        plain = []
+        conditions = []
         if ds.stateRequired:
-            # Link to that state's own row in this table
-            deps.append(f'<<dynamic-state-{ds.stateRequired}, pname:{ds.stateRequired}>>')
+            plain.append(f'pname:{ds.stateRequired}')
+            if ds.stateRequired in self.emittedStates:
+                # Link to that state's own row in this table
+                linked.append(f'<<dynamic-state-{ds.stateRequired}, pname:{ds.stateRequired}>>')
+                conditions += self.getStateConditions(self.vk.dynamicStates[ds.stateRequired])[0]
+            else:
+                # That state is not part of this API, so there is no row to link to
+                linked.append(f'pname:{ds.stateRequired}')
         if ds.specialRequired:
-            deps.append(f'<<shaders-special-{ds.specialRequired}, {ds.specialRequired}>>')
-        return ' and '.join(deps) if deps else 'None'
+            plain.append(ds.specialRequired)
+            if SPECIAL_ANCHOR_REQUIRES in self.vk.extensions:
+                linked.append(f'<<shaders-special-{ds.specialRequired}, {ds.specialRequired}>>')
+                conditions.append(f'ifdef::{SPECIAL_ANCHOR_REQUIRES}[]')
+            else:
+                # Not part of this API, so the anchors can never exist
+                linked.append(ds.specialRequired)
+        if not linked:
+            return ['| None']
+
+        # Repeated conditions, and ones the row already requires, add nothing
+        conditions = [c for c in dict.fromkeys(conditions) if c not in ds_open]
+        return self.conditionalCell(conditions, ' and '.join(linked), ' and '.join(plain))
 
     def enabledBy(self, ds):
         """Text for the feature(s) or extension that must be enabled for the state to be available, or None."""
@@ -142,15 +242,14 @@ class DynamicStateOutputGenerator(BaseGenerator):
         """Bullet list of the commands which set this state dynamically, each with its VkDynamicState,
         wrapped in its own ifdef/endif where that differs from the whole row's condition."""
         lines = []
-        for cmd in ds.commands:
+        for cmd in self.presentCommands[ds.name]:
             cmd_str = f'* flink:{cmd.name}'
-            if cmd.pipelineEnum:
+            if cmd.pipelineEnum and cmd.pipelineEnum in self.dynamicStateFields:
                 cmd_str += f' (ename:{cmd.pipelineEnum})'
             if cmd.pipelineOnly:
                 cmd_str += ' - pipelines only'
 
-            cmd_obj = self.vk.commands.get(cmd.name)
-            cmd_reqs = cmd_obj.definingRequirements if (cmd_obj and cmd_obj.definingRequirements) else {}
+            cmd_reqs = self.commandRequirements(cmd.name)
             cmd_open, cmd_close = self.getConditionLines(cmd_reqs)
 
             # Only wrap the command if it requires something beyond base 1.0
@@ -171,7 +270,11 @@ class DynamicStateOutputGenerator(BaseGenerator):
         out.append('|====')
         out.append('| Dynamic State | Shader Stage | Pipeline State | Requires Rasterization | Depends On')
 
+        self.prepare()
+
         for ds_name, ds in self.vk.dynamicStates.items():
+            if ds_name not in self.emittedStates:
+                continue
             ds_open, ds_close = self.getStateConditions(ds)
             out.extend(ds_open)
 
@@ -180,7 +283,7 @@ class DynamicStateOutputGenerator(BaseGenerator):
             out.append(f'| {self.shaderStageName(ds)}')
             out.append(f'| {self.pipelineStateName(ds)}')
             out.append(f'| {"Yes" if ds.requiresRasterization else "No"}')
-            out.append(f'| {self.dependsOn(ds)}')
+            out.extend(self.dependsOn(ds, ds_open))
 
             # Second row: everything with a long identifier, spanning the remaining columns.
             # Preprocessor directives must be on their own line to be parsed, so the cell

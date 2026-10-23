@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Vulkan Specification makefile
+# This is normally invoked from the 'makeSpec' script, since many make
+# variables need to be set based on the specific specification being built.
 #
 # To build the spec with a specific version included, set the
 # $(VERSIONS) variable on the make command line to a space-separated
-# list of version names (e.g. VK_VERSION_1_3) *including all previous
+# list of version names (e.g. VK_VERSION_1_4) *including all previous
 # versions of the API* (e.g. VK_VERSION_1_1 must also include
 # VK_VERSION_1_0 and VKSC_VERSION_1_0 must also include VK_VERSION_1_2,
 # VK_VERSION_1_1 & VK_VERSION_1_0). $(VERSIONS) is converted into generator
@@ -27,10 +29,9 @@
 # still complains about there being no rule for it.
 .WAIT:
 
-# Support building both Vulkan and Vulkan SC APIs
-# Allow the API to be overridden by the VULKAN_API environment variable
-# supported options are 'vulkan' and 'vulkansc' or unset
-# default to 'vulkan'
+# Support building Vulkan, Vulkan SC, and Vulkan Base APIs
+# Allow the API to be overridden by the VULKAN_API environment variable,
+# which defaults to 'vulkan' and may also be 'vulkansc' or 'vulkanbase'.
 VULKAN_API ?= vulkan
 ifeq ($(VULKAN_API),vulkan)
 VERSIONS := VK_VERSION_1_0 VK_VERSION_1_1 VK_VERSION_1_2 VK_VERSION_1_3 VK_VERSION_1_4
@@ -151,7 +152,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 365
+PATCHVERSION = 366
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -479,13 +480,11 @@ check-spelling:
 # Look for old or unpreferred language in specification language.
 # This mostly helps when we make global changes that also need to be
 # made in outstanding extension branches for new text.
-CHECK_WRITING = git grep -n -E -f $(ROOTDIR)/config/CI/writing $(SPECDIR)/[a-z]*.adoc $(SPECDIR)/chapters $(SPECDIR)/appendices
+# The style/ markup is not checked since it contains many examples of
+# exactly the errors being checked.
+CHECK_WRITING = $(PYTHON) $(ROOTDIR)/config/CI/check_writing.py $(SPECDIR)/chapters $(SPECDIR)/appendices $(SPECDIR)/registry.adoc
 check-writing:
-	$(QUIET) if test `$(CHECK_WRITING) | wc -l` != 0 ; then \
-	    echo "Found old style writing. Please refer to the style guide or similar language in current main branch for fixes:" ; \
-	    $(CHECK_WRITING) ; \
-	    exit 1 ; \
-	fi
+	$(QUIET) $(CHECK_WRITING)
 
 # Look for bullet list items not preceded by exactly two spaces, per styleguide
 CHECK_BULLETS = git grep -n -E '^( |   +)[-*]+ ' $(MARKUP_SPEC_SOURCES)
@@ -497,10 +496,10 @@ check-bullets:
 	fi
 
 # Look for VU text ending in a period
-CHECK_VUPERIOD = ag --nocolor --asciidoc '\* \[\[VUID[^.]+\.\n( {2}\* \[\[VUID|\*\*\*\*)' $(MARKUP_SPEC_SOURCES)
+CHECK_VUPERIOD = rg -U --multiline-dotall -e '\* \[\[VUID[^.]+\.\n( {2}\* \[\[VUID|\*{4})' $* $(MARKUP_SPEC_SOURCES)
 check-vuperiod:
 	$(QUIET) if test `$(CHECK_VUPERIOD) | wc -l` != 0 ; then \
-	    echo "VU rule ending with a disallowed period found. Note that the matched text may be very long:" ; \
+	    echo "VU rule ending with a disallowed period found. The matched text may be very long. Only the last VU in a match matters:" ; \
 	    $(CHECK_VUPERIOD) ; \
 	    exit 1 ; \
 	fi

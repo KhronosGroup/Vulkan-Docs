@@ -96,6 +96,9 @@ class InterfaceDocGenerator(OutputGenerator):
                                 else:
                                     print(f'Dropping {p} from extending structs')
                             parentstring = ', '.join(parentlist)
+                        # If none of the parents are in this build, list the
+                        # items as unparented rather than 'Extending :'
+                        if parentstring != '':
                             write(f'  * Extending {parentstring}:', file=fp)
 
                             for api in sorted(dict[required][parent]):

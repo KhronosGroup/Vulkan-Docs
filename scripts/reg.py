@@ -1858,7 +1858,13 @@ class Registry:
                 # Update the attribute after stripping stuff.
                 # Could sort apis before joining, but it is not a clear win
                 if stripped:
-                    eleminfo.elem.set(attribute, ','.join(apis))
+                    if apis:
+                        eleminfo.elem.set(attribute, ','.join(apis))
+                    else:
+                        # Nothing supported remains (e.g. structextends only
+                        # naming structs absent from this API); drop the
+                        # attribute rather than leaving an empty one.
+                        del eleminfo.elem.attrib[attribute]
 
     def stripUnsupportedAPIsFromList(self, dictionary, supportedDictionary):
         """Strip unsupported APIs from attributes of APIs.
