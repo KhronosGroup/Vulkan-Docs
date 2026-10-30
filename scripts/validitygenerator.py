@@ -1543,16 +1543,13 @@ endif::VK_KHR_internally_synchronized_queues[]"""
         required by the generator.
 
         This will allow some operations to take place before endFile no matter the order of generation."""
-        # TODO Unpleasantly breaks encapsulation. Should be a method in the registry class
 
         def is_required(name):
-            info = self.registry.lookupElementInfo(name, info_dict)
-            if info is None:
-                return False
-            if not info.required:
+            required = self.registry.isElementRequired(name, info_dict)
+            if not required:
                 self.logMsg('diag', 'keepOnlyRequired: element',
                             name, 'IS NOT required, skipping')
-            return info.required
+            return required
 
         return [name
                 for name in names

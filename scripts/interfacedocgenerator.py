@@ -6,7 +6,7 @@
 
 import re
 from generator import OutputGenerator, write
-from parse_dependency import dependencyLanguageSpecMacros
+from parse_dependency import dependencyLanguageSpecMacros, pruneDependency
 
 def interfaceDocSortKey(item):
     if item == None:
@@ -39,6 +39,22 @@ class InterfaceDocGenerator(OutputGenerator):
         # Finish processing in superclass
         OutputGenerator.endFeature(self)
 
+    def inBuild(self, key, name):
+        """Return whether an interface is part of the API being generated.
+
+         - key - label of API element, as for writeNewInterfaces
+         - name - name of the API element"""
+
+        if key == 'command':
+            infodict = self.registry.cmddict
+        elif key == 'enumconstant':
+            infodict = self.registry.enumdict
+        else:
+            infodict = self.registry.typedict
+
+        # Names the registry does not know about are listed as before
+        return self.registry.isElementRequired(name, infodict, default=True)
+
     def writeNewInterfaces(self, feature, key, title, markup, fp):
         """Generate lists of interfaces for an API feature
 
@@ -50,7 +66,23 @@ class InterfaceDocGenerator(OutputGenerator):
          - markup - API macro prefix for this type of API element
          - fp - file being written"""
 
-        dict = self.featureDictionary[feature][key]
+        # Only list interfaces which are in this API, since a feature may name
+        # interfaces which are removed (or not supported) for the API being
+        # generated. Leave out any group of interfaces left empty.
+        dict = {}
+        for required, group in self.featureDictionary[feature][key].items():
+            if key == 'command':
+                names = [api for api in group if self.inBuild(key, api)]
+                if names:
+                    dict[required] = names
+            else:
+                parents = {}
+                for parent, apis in group.items():
+                    names = [api for api in apis if self.inBuild(key, api)]
+                    if names:
+                        parents[parent] = names
+                if parents:
+                    dict[required] = parents
 
         parentmarkup = markup
         if key == 'enumconstant':
@@ -72,8 +104,12 @@ class InterfaceDocGenerator(OutputGenerator):
             # here.
             for required in sorted(dict, key = interfaceDocSortKey):
                 if required is not None:
-                    # Rewrite with spec macros and xrefs applied to names
-                    requiredlink = dependencyLanguageSpecMacros(required)
+                    # Leave out the versions and extensions which are not part
+                    # of this API (use the expression as it is if what is left
+                    # cannot be satisfied), then rewrite with spec macros and
+                    # xrefs applied to names
+                    pruned = pruneDependency(required, self.registry.isDependencyNameInAPI)
+                    requiredlink = dependencyLanguageSpecMacros(pruned if pruned is not None else required)
 
                     write(f'If {requiredlink} is supported:', file=fp)
                     write('', file=fp)
@@ -91,7 +127,7 @@ class InterfaceDocGenerator(OutputGenerator):
                             # Do not display the parents not in this spec build
                             parentlist = []
                             for p in parent.split(','):
-                                if self.registry.typedict[p].required:
+                                if self.registry.isElementRequired(p, self.registry.typedict):
                                     parentlist.append(parentmarkup + p)
                                 else:
                                     print(f'Dropping {p} from extending structs')

@@ -313,10 +313,12 @@ class Extension:
 
         # Determine version and extension interactions from 'depends'
         # attributes of <require> tags.
+        # Only list those which are part of the API being generated.
         interacts = set()
         for elem in self.interface.findall('require[@depends]'):
             names = dependencyNames(elem.get('depends'))
-            interacts |= names
+            interacts |= {name for name in names
+                          if self.generator.registry.isDependencyNameInAPI(name)}
 
         if len(interacts) > 0:
             self.writeTag('API Interactions', None, isRefpage, fp)

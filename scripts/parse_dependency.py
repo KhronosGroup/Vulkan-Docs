@@ -18,6 +18,11 @@
 # dependencyNames(dependency) returns a set of the extension and
 # version names in the expression.
 #
+# pruneDependency(dependency, isSupported) returns the expression with the
+# names for which isSupported returns False removed and the result
+# simplified, the expression itself if all its names are supported, or None
+# if the remaining expression cannot be satisfied.
+#
 # dependencyMarkup(dependency) returns a string containing asciidoctor
 # markup for English equivalent to the expression, suitable for extension
 # appendices.
@@ -228,6 +233,76 @@ def evaluateDependency(dependency, isSupported):
     results = dependencyBNF().parse_string(dependency, parse_all=True)
     val = evaluateStack(exprStack[:], isSupported)
     return val
+
+def pruneStack(stack, isSupported):
+    """Evaluate an expression stack, returning an expression tree with the
+       names which are not supported removed, or None if the expression
+       cannot be satisfied.
+
+       A tree is either a name, or a tuple (operator, lhs, rhs).
+
+     - stack - the stack
+     - isSupported - function taking a version or extension name string and
+       returning True or False if that name is supported or not."""
+
+    op, num_args = stack.pop(), 0
+    if isinstance(op, tuple):
+        op, num_args = op
+
+    if op in '+,':
+        # Note: operands are pushed onto the stack in reverse order
+        rhs = pruneStack(stack, isSupported)
+        lhs = pruneStack(stack, isSupported)
+        if op == '+':
+            if lhs is None or rhs is None:
+                return None
+        else:
+            if lhs is None:
+                return rhs
+            if rhs is None:
+                return lhs
+        return (op, lhs, rhs)
+    elif op[0].isalpha():
+        return op if isSupported(op) else None
+    else:
+        raise Exception(f'invalid op: {op}')
+
+def pruneTreeString(tree, parent_op = None):
+    """Return the expression form of a tree returned by pruneStack
+
+     - tree - the tree
+     - parent_op - the operator of the parent, used to parenthesize
+                   mixed operators"""
+
+    if isinstance(tree, str):
+        return tree
+
+    op, lhs, rhs = tree
+    expr = f'{pruneTreeString(lhs, op)}{op}{pruneTreeString(rhs, op)}'
+    if parent_op is not None and parent_op != op:
+        return f'({expr})'
+    return expr
+
+def pruneDependency(dependency, isSupported):
+    """Return an API dependency expression with the versions and extensions
+       which are not supported removed, so only alternatives which can apply
+       remain. The expression is returned unchanged if all of its names are
+       supported, and None if it cannot be satisfied.
+
+     - dependency - the expression
+     - isSupported - function taking a version or extension name string and
+       returning True or False if that name is supported or not."""
+
+    if all(isSupported(name) for name in dependencyNames(dependency)):
+        return dependency
+
+    global exprStack
+    exprStack = []
+    dependencyBNF().parse_string(dependency, parse_all=True)
+    tree = pruneStack(exprStack[:], isSupported)
+    if tree is None:
+        return None
+    return pruneTreeString(tree)
 
 def evalDependencyLanguage(stack, leafMarkup, opMarkup, parenthesize, root, parent_op = None):
     """Evaluate an expression stack, returning an English equivalent

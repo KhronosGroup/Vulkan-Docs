@@ -685,6 +685,19 @@ class Registry:
 
         return None
 
+    def isElementRequired(self, name, dictionary, default=False):
+        """Return whether a type / enum / command is required for the API
+        being generated.
+
+        - name - name of type / enum / command
+        - dictionary - self.{type|enum|cmd}dict
+        - default - value to return if `name` is not in the dictionary"""
+
+        info = self.lookupElementInfo(name, dictionary)
+        if info is None:
+            return default
+        return info.required
+
     def breakOnName(self, regexp):
         """Specify a feature name regexp to break on when generating features."""
         self.breakPat = re.compile(regexp)
@@ -1331,6 +1344,38 @@ class Registry:
 
         return False
 
+    def isDependencyNameSupported(self, name):
+        """Return True if a version or extension name used in a depends
+        expression is part of the API being generated.
+
+        - name - name of a version or extension"""
+
+        # Treat genFeatures and removedExtensionNames as supported (extensions
+        # moved to platform/beta headers still count so their enum values stay
+        # in the core header).
+        # For VulkanSC, do not treat VK_VERSION_1_3 and VK_VERSION_1_4 as
+        # supported: Vulkan SC 1.0 does not include those versions
+        # so require blocks that depend on them must be excluded for vulkansc.
+        # TODO - remove explicit check once !7794 (or equivalent) is merged
+        if getattr(self.genOpts, 'apiname', None) == 'vulkansc' and name in (
+                'VK_VERSION_1_3', 'VK_VERSION_1_4'):
+            return False
+        return (name in self.genFeatures or
+                name in getattr(self, 'removedExtensionNames', set()))
+
+    def isDependencyNameInAPI(self, name):
+        """Return True if a name used in a depends expression is part of the
+        API being generated, for use when deciding whether to mention it.
+        Unlike isDependencyNameSupported this also accepts the
+        `struct::feature` names which can appear in an expression, which are
+        part of the API if the struct is.
+
+        - name - name of a version, extension or `struct::feature`"""
+
+        if '::' in name:
+            return self.isElementRequired(name.split('::')[0], self.typedict, default=True)
+        return self.isDependencyNameSupported(name)
+
     def requireDependsSatisfied(self, require):
         """Return True if the require element has no depends attribute, or if the
         depends boolean expression evaluates to true.
@@ -1340,20 +1385,7 @@ class Registry:
         if not depends or not depends.strip():
             return True
         try:
-            # Treat genFeatures and removedExtensionNames as satisfied (extensions
-            # moved to platform/beta headers still count so their enum values stay
-            # in the core header).
-            # For VulkanSC, do not treat VK_VERSION_1_3 and VK_VERSION_1_4 as
-            # satisfying depends: Vulkan SC 1.0 does not include those versions
-            # so require blocks that depend on them must be excluded for vulkansc.
-            # TODO - remove explicit check once !7794 (or equivalent) is merged
-            def is_supported(name):
-                if getattr(self.genOpts, 'apiname', None) == 'vulkansc' and name in (
-                        'VK_VERSION_1_3', 'VK_VERSION_1_4'):
-                    return False
-                return (name in self.genFeatures or
-                        name in getattr(self, 'removedExtensionNames', set()))
-            return evaluateDependency(depends, is_supported)
+            return evaluateDependency(depends, self.isDependencyNameSupported)
         except ParseException as e:
             self.gen.logMsg('warn', 'requireDependsSatisfied: parse error', str(e), 'in depends="', depends, '"')
             return False

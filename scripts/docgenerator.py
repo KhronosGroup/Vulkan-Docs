@@ -7,7 +7,7 @@
 from pathlib import Path
 
 from generator import GeneratorOptions, OutputGenerator, noneStr, write
-from parse_dependency import dependencyLanguageComment
+from parse_dependency import dependencyLanguageComment, pruneDependency
 from apiconventions import APIConventions as APIConventions
 conventions = APIConventions()
 
@@ -191,8 +191,22 @@ class DocOutputGenerator(OutputGenerator):
                 # To simplify this, sort the (base,dependency) requirements
                 # and put them in a set to ensure they are unique.
                 features = set()
-                # 'dependency' may be a boolean expression of extension names
+
+                # Leave out the versions and extensions which are not part
+                # of this API, and the requirements which cannot apply to it.
+                # If none apply, use all of them.
+                requiredBy = []
                 for (base,dependency) in self.apidict.requiredBy[name]:
+                    if dependency is not None:
+                        dependency = pruneDependency(dependency, self.registry.isDependencyNameInAPI)
+                        if dependency is None:
+                            continue
+                    requiredBy.append((base,dependency))
+                if not requiredBy:
+                    requiredBy = self.apidict.requiredBy[name]
+
+                # 'dependency' may be a boolean expression of extension names
+                for (base,dependency) in requiredBy:
                     if dependency is not None:
                         # 'dependency' may be a boolean expression of extension
                         # names, in which case the sorting will not work well.
@@ -605,7 +619,7 @@ class DocOutputGenerator(OutputGenerator):
         OutputGenerator.genCmd(self, cmdinfo, name, alias)
 
         body = self.genRequirements(name)
-        if alias and self.registry.cmddict[alias].required:
+        if alias and self.registry.isElementRequired(alias, self.registry.cmddict):
             body += f'// Equivalent to {alias}\n'
         decls = self.makeCDecls(cmdinfo.elem)
         body += decls[0]

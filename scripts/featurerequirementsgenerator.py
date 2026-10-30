@@ -27,6 +27,9 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
         self.features = {}
         # <'parent', {'adocstring' : '', 'features' : ['']}
 
+        self.buildFeatureNames = None
+        # Names of the members of the structs in the build, filled in on first use
+
         self.removedfeatures = {}
         # <name, {'parent' : '', 'parentstring' : '', 'removalreasonlink' : ''}>
 
@@ -213,9 +216,42 @@ class FeatureRequirementsDocGenerator(OutputGenerator):
 
         return f"at least one of {', '.join(featuretexts[0:-1])}, or {featuretexts[-1]}"
 
+    # Return whether a feature struct (or the struct it aliases) is part of the API being generated
+    def structInBuild(self, structname):
+        typedict = self.registry.typedict
+        if self.registry.isElementRequired(structname, typedict, default=True):
+            return True
+        alias = self.registry.lookupElementInfo(structname, typedict).elem.get('alias')
+        return alias is not None and self.structInBuild(alias)
+
+    # Return whether a feature is documented in the API being generated: either its
+    # struct is part of the build, or another struct in the build has a member of
+    # the same name (for example a feature promoted into a core version's struct)
+    def featureInBuild(self, structname, featurelist):
+        if self.structInBuild(structname):
+            return True
+        if self.buildFeatureNames is None:
+            self.buildFeatureNames = set()
+            for info in self.registry.typedict.values():
+                if info.required and info.elem.get('category') == 'struct':
+                    self.buildFeatureNames.update(name.text for name in info.elem.findall('member/name'))
+        return any(feature in self.buildFeatureNames for feature in featurelist.split(','))
+
     # Loop through all of the recorded features and write them out as a list of requirements, before finalizing the file.
     def endFile(self):
         for parentname,data in self.features.items():
+
+            # Leave out requirements on features which are not in this API (for example a
+            # feature of an extension which is not part of the build), since the feature
+            # is not documented and cannot be linked to. This also leaves out a parent
+            # with no requirements remaining.
+            features = {}
+            for featurelist, featureinfo in data['features'].items():
+                if self.featureInBuild(featureinfo['struct'], featurelist):
+                    features[featurelist] = featureinfo
+            if len(features) == 0:
+                continue
+            data = {**data, 'features': features}
 
             # Write the pre-amble requiring the parent feature
             write(f"ifdef::{parentname}[]", file=self.outFile)
