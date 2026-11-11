@@ -796,7 +796,13 @@ class OutputGenerator:
             expandPrefix = expandName.rsplit(expandSuffix, 1)[0]
 
         # Prefix
-        body = ["typedef enum %s {" % groupName]
+        # Types marked nodiscard="true" in the XML get the nodiscard
+        # attribute macro (if any) between 'enum' and the type name.
+        info = self.registry.typedict.get(groupName)
+        nodiscard = ''
+        if info is not None and info.elem.get('nodiscard') == 'true':
+            nodiscard = self.genOpts.nodiscard
+        body = [f"typedef enum {nodiscard}{groupName} {{"]
 
         # @@ Should use the type="bitmask" attribute instead
         isEnum = ('FLAG_BITS' not in expandPrefix)
