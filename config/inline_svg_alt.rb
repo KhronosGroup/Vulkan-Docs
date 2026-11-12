@@ -6,7 +6,9 @@
 # accessible name. This copies an explicitly authored 'alt' onto the
 # inlined <svg> as role="img" and aria-label. Alt text that Asciidoctor
 # generated from the file name (default-alt) is deliberately not used.
-# A warning is issued for each inlined image that has no authored alt.
+# When the document attribute 'warn-missing-alt' is set (for example with
+# make EXTRAATTRIBS='-a warn-missing-alt' html), a warning is issued for each
+# inlined image that has no authored alt. It is off by default.
 
 require 'asciidoctor'
 require 'asciidoctor/converter/html5'
@@ -18,7 +20,8 @@ module InlineSvgAlt
       alt = node.attr('alt').gsub('&', '&amp;').gsub('"', '&quot;').gsub('<', '&lt;')
       html = html.sub(/<svg(\s)(?![^>]*\saria-label=)/, %(<svg role="img" aria-label="#{alt}"\\1))
     end
-    if (node.option? 'inline') && !(node.attr?('alt') && !node.attr?('default-alt'))
+    if (node.option? 'inline') && node.document.attr?('warn-missing-alt') &&
+       !(node.attr?('alt') && !node.attr?('default-alt'))
       logger.warn message_with_context(%(inline image #{node.attr 'target'} has no alt text),
                                        source_location: node.parent.source_location || node.source_location)
     end
