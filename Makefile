@@ -226,7 +226,8 @@ ADOCMISCOPTS = --failure-level ERROR
 # as apimap.rb
 ADOCEXTS     = -I$(GENERATED) \
 	       -r $(CONFIGS)/spec-macros.rb \
-	       -r $(CONFIGS)/open_listing_block.rb
+	       -r $(CONFIGS)/open_listing_block.rb \
+	       -r $(CONFIGS)/inline_svg_alt.rb
 ADOCOPTS     = -d book $(ADOCMISCOPTS) $(ATTRIBOPTS) $(NOTEOPTS) $(VERBOSE) $(ADOCEXTS)
 
 # HTML target-specific Asciidoctor extensions and options
