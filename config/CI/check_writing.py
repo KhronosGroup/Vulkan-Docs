@@ -108,6 +108,11 @@ Rules = [
         'Use "equal to or (greater/less) than"',
         'writing-math',
     ],
+    [
+        r'(Vulkan|SPIR-V|AV1|Vulkan SC) specification',
+        'Capitalize proper nouns, such as Specification when used to identify a formal document',
+        'writing-propernoun',
+    ],
 ]
 
 if __name__ == '__main__':

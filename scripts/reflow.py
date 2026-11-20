@@ -506,18 +506,16 @@ def reflowFile(filename, args):
 
 def reflowAllAdocFiles(folder_to_reflow, args):
     for root, subdirs, files in os.walk(folder_to_reflow):
+        print(f'   Parsing = {root}')
         for file in files:
             if file.endswith(conventions.file_suffix):
                 file_path = os.path.join(root, file)
                 reflowFile(file_path, args)
-        for subdir in subdirs:
-            sub_folder = os.path.join(root, subdir)
-            print(f'Sub-folder = {sub_folder}')
-            if subdir.lower() not in conventions.spec_no_reflow_dirs:
-                print(f'   Parsing = {sub_folder}')
-                reflowAllAdocFiles(sub_folder, args)
-            else:
+        for subdir in list(subdirs):
+            if subdir.lower() in conventions.spec_no_reflow_dirs:
+                sub_folder = os.path.join(root, subdir)
                 print(f'   Skipping = {sub_folder}')
+                subdirs.remove(subdir)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

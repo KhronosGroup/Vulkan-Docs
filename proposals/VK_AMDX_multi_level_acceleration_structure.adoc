@@ -1,0 +1,174 @@
+// Copyright 2021-2026 The Khronos Group Inc.
+// SPDX-License-Identifier: CC-BY-4.0
+
+= VK_AMDX_multi_level_acceleration_structure
+:toc: left
+:docs: https://docs.vulkan.org/spec/latest/
+:refpages: https://docs.vulkan.org/refpages/latest/refpages/source/
+:sectnums:
+// Required so images render in github
+ifndef::images[:images: ../images]
+
+This document details the VK_AMDX_multi_level_acceleration_structure extension which adds multiple acceleration structure levels to improve build/update speeds and memory footprints for complex ray traced scenarios.
+
+== Problem Statement
+
+Game developers are currently forced to limit the complexity of ray traced worlds in their games. The two main reasons for this, in order of importance, are high acceleration structure (AS) build and update times, and AS memory footprints. This is especially true for scenes with lots of animated geometry. To catch up with the complexity of rasterized scenes, changes need to be made to the acceleration structure API to address these bottlenecks.
+
+== Solution Space
+
+Additional AS levels allow better control over which parts of large worlds need to be re-built or updated together, and at what granularity. The use of multi-level instancing has the ability to bring down AS build costs as e.g. a top level AS level can be built over instances of lower level structures that in turn 'hide' many bottom level structure instances inside, instead of building the top level structure over all 'unrolled' bottom level instances.
+
+In a similar vein, currently, memory footprints are higher than necessary because of the lack of real multi-level instancing in acceleration structures. For example, almost all animated geometry, even if it can make use of rigid transformations to animate, needs to be replicated to fit a two level BVH hierarchy.
+
+== Proposal
+
+This extension provides the ability to add up to 2 extra levels of instances to the acceleration structure hierarchy, with full transforms between each level. The new mid-level acceleration structures (MDLAS) are essentially top-level acceleration structures whose instances can "point" to other MDLAS or bottom-level acceleration structures (BLAS):
+
+image::{images}/multilevelaccelerationstructure.svg[align="center",title="Acceleration structure hierarchy",opts="{imageopts}"]
+
+=== API changes
+
+A new acceleration structure type is added:
+
+[source,c]
+----
+typedef enum VkAccelerationStructureTypeKHR {
+    ...
+    VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX = 1000648000,
+} VkAccelerationStructureTypeKHR;
+----
+
+When `VkAccelerationStructureBuildGeometryInfoKHR.type` is `VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX`, the `instances` member of the `VkAccelerationStructureGeometryDataKHR` structure defines the instances within an MDLAS, in the same way as top-level acceleration structures (TLAS).
+
+The `accelerationStructureReference` member of `VkAccelerationStructureInstanceKHR` can now be the address of an MDLAS, or a BLAS as before.
+
+==== New ray tracing pipeline creation flag
+
+A new pipeline create flag is added that specifies that a pipeline supports MDLAS within an acceleration structure hierarchy during traversal:
+
+[source,c]
+----
+VkPipelineCreateFlagBits2 VK_PIPELINE_CREATE_2_RAY_TRACING_ALLOW_MULTI_LEVEL_ACCELERATION_STRUCTURES_BIT_AMDX = 0x800000000000ULL;
+----
+
+This flag applies to both ray tracing pipelines and ray queries.
+
+Behavior is undefined if a pipeline is not created with this flag but is used with an acceleration structure hierarchy that contains an MDLAS.
+
+==== Features
+
+[source,c]
+----
+typedef struct VkPhysicalDeviceMultiLevelAccelerationStructureFeaturesAMDX {
+    VkStructureType    sType;
+    void*              pNext;
+    VkBool32           multiLevelAccelerationStructure;
+} VkPhysicalDeviceMultiLevelAccelerationStructureFeaturesAMDX;
+----
+
+* `multiLevelAccelerationStructure` is the main feature enabling this extension's functionality.
+
+
+=== SPIR-V Changes
+
+A new SPIR-V extension https://github.khronos.org/SPIRV-Registry/extensions/AMDX/SPV_AMDX_multi_level_acceleration_structure.html[SPV_AMDX_multi_level_acceleration_structure] adds the ability to query the properties of each individual instance in the chain that led to a hit, rather than only those of the final instance.
+
+Instances are identified by a level, where the instance in the TLAS is at level 0 and each MDLAS instance referenced from a given level is at the next level down, so the final instance is at the number of levels traversed minus one.
+
+==== New SPIR-V capabilities
+
+- `RayTracingMultiLevelAccelerationStructureAMDX`, which implicitly declares `RayTracingKHR`
+- `RayQueryMultiLevelAccelerationStructureAMDX`, which implicitly declares `RayQueryKHR`
+
+==== New SPIR-V built-ins
+
+- `HitInstanceLevelAMDX` which indicates a builtin containing the number of levels traversed to reach the current hit, in intersection, any-hit, and closest hit shaders
+
+==== New SPIR-V instructions
+
+Four instructions are added for ray tracing pipelines, each taking a `Level` operand:
+
+- `OpGetInstanceCustomIndexAtLevelAMDX` which returns the `instanceCustomIndex` member of the `VkAccelerationStructureInstanceKHR` structure of the instance at the given level
+- `OpGetInstanceIdAtLevelAMDX` which returns the index of the instance at the given level within the acceleration structure that contains it
+- `OpGetObjectToWorldAtLevelAMDX` which returns the transform of the instance at the given level alone, rather than the transform of the whole chain reported by `ObjectToWorldKHR`
+- `OpGetWorldToObjectAtLevelAMDX` which returns the inverse of that transform
+
+Five instructions are added for ray queries:
+
+- `OpRayQueryGetIntersectionInstanceLevelAMDX` which returns the number of levels traversed to reach the intersection, this being the ray query equivalent of `HitInstanceLevelAMDX`
+- `OpRayQueryGetIntersectionInstanceCustomIndexAtLevelAMDX`
+- `OpRayQueryGetIntersectionInstanceIdAtLevelAMDX`
+- `OpRayQueryGetIntersectionObjectToWorldAtLevelAMDX`
+- `OpRayQueryGetIntersectionWorldToObjectAtLevelAMDX`
+
+The last four also take a `Level` operand, and return the same values as their ray tracing pipeline counterparts.
+
+==== Affected existing SPIR-V built-ins
+
+The values reported by the following existing ray tracing built-ins are affected when a mid-level acceleration structure is present in the hierarchy, as described in the "Instance parameters selection" and "Matrix, origin, and direction definitions" sections below:
+
+- `InstanceCustomIndexKHR`
+- `InstanceId`
+- `ObjectToWorldKHR`
+- `WorldToObjectKHR`
+- `ObjectRayOriginKHR`
+- `ObjectRayDirectionKHR`
+
+The corresponding ray query instructions, such as `OpRayQueryGetIntersectionInstanceCustomIndexKHR` and `OpRayQueryGetIntersectionObjectToWorldKHR`, are affected in the same way.
+
+
+=== Instance parameters selection
+
+During traversal, some of the parameters of the chain of instances are ignored for all but those of the instance that references the BLAS of the primitive that has been hit by the ray (the "final instance" in the chain). The transforms, acceleration structure references, etc, of the instances behave as normal.
+
+The parameters affected are:
+
+==== Instance custom index
+
+`InstanceCustomIndexKHR` is the value of the `instanceCustomIndex` member of the `VkAccelerationStructureInstanceKHR` structure of the final instance.
+
+==== Instance mask
+
+The `Cull Mask` parameter of `OpTraceRayKHR` is only tested against the `mask` member of the `VkAccelerationStructureInstanceKHR` structure of the final instance.
+
+==== Instance Shader Binding Table Record Offset
+
+The value of `instanceShaderBindingTableRecordOffset` used when calculating the binding table index is that of the `VkAccelerationStructureInstanceKHR` structure of the final instance.
+
+==== Instance flags
+
+The `flags` member of the `VkAccelerationStructureInstanceKHR` structure is ignored for all instances, except for that of the final instance.
+
+==== Instance ID
+
+`InstanceId` is the value of the index of the final instance within the MDLAS/TLAS that contains it.
+
+
+=== Instance transform definitions
+
+- For instances in the TLAS (at level 0), the `transform` member of the `VkAccelerationStructureInstanceKHR` structure defines the 3x4 transform matrix in row major layout representing the instance-to-world transformation.
+- For instances in an MDLAS at level 1, the `transform` member of the `VkAccelerationStructureInstanceKHR` structure defines the 3x4 transform matrix in row major layout representing the transformation that transforms from level 1 to level 0.
+- For instances in an MDLAS at level 2, the `transform` member of the `VkAccelerationStructureInstanceKHR` structure defines the 3x4 transform matrix in row major layout representing the transformation that transforms from level 2 to level 1.
+
+
+=== Matrix, origin, and direction definitions
+
+==== ObjectToWorldKHR
+
+This is the matrix that transforms from the local coordinate system of the BLAS to world space, and is the result of the multiplication of the matrices for the instances in the chain. E.g. for a chain of TLAS->MDLAS->MDLAS->BLAS this would be the multiplication of the `ObjectToLevel1`, `Level1ToLevel0` and `Level0ToWorldSpace` matrices.
+
+==== WorldToObjectKHR
+
+This is the matrix that transforms from world space to the local coordinate system of the BLAS, and is the result of the multiplication of the matrices for the instances in the chain. E.g. for a chain of TLAS->MDLAS->MDLAS->BLAS this would be the multiplication of the `WorldToLevel0`, `Level0ToLevel1` and `Level1ToObject` matrices.
+
+==== ObjectRayOriginKHR/ObjectRayDirectionKHR
+
+These are the origin/direction in the local coordinate system of the BLAS, regardless of the number of levels in the hierarchy.
+
+
+== Issues
+
+=== How does this extension interact with acceleration structure serialization?
+
+Serialization support will be added in a future revision.

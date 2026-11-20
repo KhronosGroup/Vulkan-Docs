@@ -132,10 +132,18 @@ Opaque acceleration structure for an array of instances.
 The descriptor or device address referencing this is the starting point for
 traversal.
 
-The top level acceleration structure takes a reference to any bottom level
-acceleration structure referenced by its instances.
-Those bottom level acceleration structure objects must: be valid when the
-top level acceleration structure is accessed.
+The top level acceleration structure takes a reference to any
+ifdef::VK_AMDX_multi_level_acceleration_structure[mid level or]
+bottom level acceleration structure referenced by its instances.
+Those
+ifdef::VK_AMDX_multi_level_acceleration_structure[mid level or]
+bottom level acceleration structure objects must: be valid when the top
+level acceleration structure is accessed.
+ifdef::VK_AMDX_multi_level_acceleration_structure[]
+Acceleration structures referenced indirectly, via the instances of a mid
+level acceleration structure, must: also be valid when the top level
+acceleration structure is accessed.
+endif::VK_AMDX_multi_level_acceleration_structure[]
 
 
 [[acceleration-structure-bottom-level]]
@@ -843,11 +851,13 @@ not modified.
     If pname:geometryCount is not `0`, exactly one of pname:pGeometries or
     pname:ppGeometries must: be a valid pointer, the other must: be `NULL`
   * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03789]]
-    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR, the
-    pname:geometryType member of elements of either pname:pGeometries or
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+ifdef::VK_AMDX_multi_level_acceleration_structure[or ename:VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX,]
+    the pname:geometryType member of elements of either pname:pGeometries or
     pname:ppGeometries must: be ename:VK_GEOMETRY_TYPE_INSTANCES_KHR
   * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03790]]
     If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR,
+ifdef::VK_AMDX_multi_level_acceleration_structure[or ename:VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX,]
     pname:geometryCount must: be `1`
   * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-03791]]
     If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR
@@ -1032,6 +1042,13 @@ ifdef::VK_KHR_opacity_micromap[]
     <<limits-maxOpacityLossy4StateSubdivisionLevel,
     pname:maxOpacityLossy4StateSubdivisionLevel>>
 endif::VK_KHR_opacity_micromap[]
+ifdef::VK_AMDX_multi_level_acceleration_structure[]
+  * [[VUID-VkAccelerationStructureBuildGeometryInfoKHR-type-12554]]
+    If pname:type is ename:VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX,
+    the <<features-multiLevelAccelerationStructure,
+    sname:VkPhysicalDeviceMultiLevelAccelerationStructureFeaturesAMDX::pname:multiLevelAccelerationStructure>>
+    feature must: be enabled
+endif::VK_AMDX_multi_level_acceleration_structure[]
 ****
 include::{generated}/validity/structs/VkAccelerationStructureBuildGeometryInfoKHR.adoc[]
 --
@@ -1846,6 +1863,9 @@ ifdef::VK_NV_cluster_acceleration_structure[]
      structure built using
      flink:vkCmdBuildClusterAccelerationStructureIndirectNV
 endif::VK_NV_cluster_acceleration_structure[]
+ifdef::VK_AMDX_multi_level_acceleration_structure[]
+  ** a device address of a mid level acceleration structure
+endif::VK_AMDX_multi_level_acceleration_structure[]
 ifdef::VK_KHR_acceleration_structure[]
   ** a slink:VkAccelerationStructureKHR object (used by host operations
      which reference acceleration structures).
@@ -1891,6 +1911,14 @@ endif::VK_EXT_opacity_micromap[]
     pname:accelerationStructureReference must: have included
     ename:VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_DISABLE_OPACITY_MICROMAPS_BIT_KHR
 endif::VK_KHR_opacity_micromap,VK_EXT_opacity_micromap[]
+ifdef::VK_AMDX_multi_level_acceleration_structure[]
+  * [[VUID-VkAccelerationStructureInstanceKHR-accelerationStructureReference-12555]]
+    If pname:accelerationStructureReference is the device address of a mid
+    level acceleration structure, the
+    <<features-multiLevelAccelerationStructure,
+    sname:VkPhysicalDeviceMultiLevelAccelerationStructureFeaturesAMDX::pname:multiLevelAccelerationStructure>>
+    feature must: be enabled
+endif::VK_AMDX_multi_level_acceleration_structure[]
 ****
 
 include::{generated}/validity/structs/VkAccelerationStructureInstanceKHR.adoc[]
@@ -3290,6 +3318,14 @@ structure, pname:dst must: have been created with a value of
 slink:VkAccelerationStructureCreateInfoKHR::pname:type equal to either
 ename:VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR or
 ename:VK_ACCELERATION_STRUCTURE_TYPE_GENERIC_KHR.
+
+ifdef::VK_AMDX_multi_level_acceleration_structure[]
+If the serialized data in pname:src represents a mid-level acceleration
+structure, pname:dst must: have been created with a value of
+slink:VkAccelerationStructureCreateInfoKHR::pname:type equal to either
+ename:VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX or
+ename:VK_ACCELERATION_STRUCTURE_TYPE_GENERIC_KHR.
+endif::VK_AMDX_multi_level_acceleration_structure[]
 
 If the serialized data in pname:src represents a bottom-level acceleration
 structure, pname:dst must: have been created with a value of
@@ -5410,6 +5446,123 @@ include::{generated}/api/structs/VkPartitionedAccelerationStructureWritePartitio
 include::{generated}/validity/structs/VkPartitionedAccelerationStructureWritePartitionTranslationDataNV.adoc[]
 --
 endif::VK_NV_partitioned_acceleration_structure[]
+
+
+ifdef::VK_AMDX_multi_level_acceleration_structure[]
+[[multi-level-acceleration-structure]]
+== Multi-Level Acceleration Structures
+
+The `apiext:VK_AMDX_multi_level_acceleration_structure` extension adds the
+ability to use additional acceleration structure levels to improve
+build/update speeds and memory footprints for complex ray traced scenarios,
+giving better control over which parts of large worlds need to be re-built
+or updated together, and at what granularity.
+
+Up to two extra levels of fully-transformed instances, called mid-level
+acceleration structures (MDLAS), can: be added to the acceleration structure
+hierarchy.
+An MDLAS is essentially a top-level acceleration structure (TLAS), built
+using the ename:VK_ACCELERATION_STRUCTURE_TYPE_MID_LEVEL_AMDX type, which
+can: be referenced by a TLAS or another MDLAS.
+When the <<features-multiLevelAccelerationStructure,
+sname:VkPhysicalDeviceMultiLevelAccelerationStructureFeaturesAMDX::pname:multiLevelAccelerationStructure>>
+feature is enabled, the pname:accelerationStructureReference member of
+slink:VkAccelerationStructureInstanceKHR can: be the address of an MDLAS.
+
+If more than two levels of mid-level acceleration structure are present in
+the hierarchy, behavior is undefined:.
+
+image::{images}/multilevelaccelerationstructure.svg[align="center",title="Example MDLAS hierarchy",width="800",opts="{imageopts}"]
+
+An MDLAS cannot: be used as the root of an acceleration structure hierarchy.
+Rays are first tested against instances in a TLAS, and an MDLAS can: only be
+reached via the pname:accelerationStructureReference member of
+slink:VkAccelerationStructureInstanceKHR.
+ifdef::VK_KHR_ray_tracing_pipeline,VK_KHR_ray_query[]
+See <<ray-intersection-candidate-determination, ray intersection candidate
+determination>> for details of how rays are tested against instances.
+endif::VK_KHR_ray_tracing_pipeline,VK_KHR_ray_query[]
+
+Pipelines that trace rays into an acceleration structure hierarchy that
+contains an MDLAS must: have been created with the
+ename:VK_PIPELINE_CREATE_2_RAY_TRACING_ALLOW_MULTI_LEVEL_ACCELERATION_STRUCTURES_BIT_AMDX
+flag set, otherwise behavior is undefined:.
+
+During traversal, some instance parameters apply only for the instance that
+refers to the BLAS containing the primitive hit by the ray (the _final
+instance_ in the chain), with those of other instances in the chain ignored:
+
+* code:InstanceCustomIndexKHR is the value of the pname:instanceCustomIndex
+  member of the slink:VkAccelerationStructureInstanceKHR structure of the
+  final instance.
+* The cull mask parameter of the trace instruction is only tested against
+  the pname:mask member of the slink:VkAccelerationStructureInstanceKHR
+  structure of the final instance.
+* The value of code:instanceShaderBindingTableRecordOffset used when
+  calculating the hit shader binding table index is that of the
+  slink:VkAccelerationStructureInstanceKHR structure of the final instance.
+* The pname:flags member of the slink:VkAccelerationStructureInstanceKHR
+  structure is ignored for all instances except that of the final instance.
+* code:InstanceId is the value of the index of the final instance within the
+  MDLAS or TLAS that contains it.
+
+=== Clarification of transform, matrix, origin, and direction definitions when using multi level acceleration structures
+
+Instances in the hierarchy are identified by a _level_, numbered downwards
+from the top of the hierarchy.
+Instances in the TLAS are at level 0, instances in an MDLAS that is
+referenced by an instance at level 0 are at level 1, and so on.
+The final instance is therefore the one at the highest level.
+
+==== Instance transform
+
+* For instances in the TLAS (at level 0), the pname:transform member of the
+  slink:VkAccelerationStructureInstanceKHR structure defines the 3x4
+  transform matrix in row major layout representing the instance-to-world
+  transformation.
+* For instances in an MDLAS at level 1, the pname:transform member of the
+  slink:VkAccelerationStructureInstanceKHR structure defines the 3x4
+  transform matrix in row major layout representing the transformation that
+  transforms from level 1 to level 0.
+* For instances in an MDLAS at level 2, the pname:transform member of the
+  slink:VkAccelerationStructureInstanceKHR structure defines the 3x4
+  transform matrix in row major layout representing the transformation that
+  transforms from level 2 to level 1.
+
+==== ObjectToWorldKHR
+
+* For a BLAS that is instanced directly in the TLAS (at level 0) this is the
+  matrix that transforms from the local coordinate system of the BLAS to
+  world space.
+* For a BLAS that is instanced in an MDLAS at level 1 this is the matrix
+  that transforms from the local coordinate system of the BLAS directly to
+  world space.
+  So it is the result of the multiplication of the matrices ObjectToLevel0
+  and Level0ToWorldSpace.
+* For a BLAS that is instanced in an MDLAS at level 2 this is the matrix
+  that transforms from the local coordinate system of the BLAS directly to
+  world space.
+  So it is the result of the multiplication of the matrices ObjectToLevel1,
+  Level1ToLevel0 and Level0ToWorldSpace.
+
+==== WorldToObjectKHR
+
+* For a BLAS that is instanced directly in the TLAS (at level 0) this is the
+  matrix that transforms from world space to the local space of the BLAS.
+* For a BLAS that is instanced in an MDLAS at level 1 this is the matrix
+  that transforms from world space to the local space of the BLAS.
+  So it is the result of the multiplication of the matrices WorldToLevel0
+  and Level0ToObject.
+* For a BLAS that is instanced in an MDLAS at level 2 this is the matrix
+  that transforms from world space to the local space of the BLAS.
+  So it is the result of the multiplication of the matrices WorldToLevel0,
+  Level0ToLevel1 and Level1ToObject.
+
+==== ObjectRayOriginKHR/ObjectRayDirectionKHR
+
+These are the origin/direction in the local coordinate system of the BLAS,
+regardless of the number of levels in the hierarchy.
+endif::VK_AMDX_multi_level_acceleration_structure[]
 
 
 ifdef::VK_KHR_acceleration_structure[]

@@ -14,7 +14,7 @@ from collections import namedtuple
 import os
 
 from reflib import loadFile
-from reflow import reflowFile
+from reflow import reflowAllAdocFiles, reflowFile
 
 testsDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'reflow-tests')
 resultsDir = os.path.join(testsDir, 'results')
@@ -382,3 +382,32 @@ def test_math_block_in_vu(args):
                           {'10000':
                            [['scripts/reflow-tests/src-math-block-in-vu.adoc',
                              '[[VUID-vkCmdClearColorImage-image-10000]]']]})
+
+def test_reflow_all_adoc_files_skips_no_reflow_dirs(tmp_path, monkeypatch):
+    """Test that reflowAllAdocFiles skips spec_no_reflow_dirs and visits each file once."""
+    import reflow
+
+    (tmp_path / "chapters" / "nested").mkdir(parents=True)
+    (tmp_path / "scripts" / "reflow-tests").mkdir(parents=True)
+
+    root_file = tmp_path / "root.adoc"
+    chapter_file = tmp_path / "chapters" / "chapter.adoc"
+    nested_file = tmp_path / "chapters" / "nested" / "ext.adoc"
+    skipped_file = tmp_path / "scripts" / "skipped.adoc"
+    skipped_nested_file = tmp_path / "scripts" / "reflow-tests" / "src-text.adoc"
+
+    for f in (root_file, chapter_file, nested_file, skipped_file, skipped_nested_file):
+        f.write_text("= Title\n", encoding="utf-8")
+
+    visited = []
+    monkeypatch.setattr(reflow, "reflowFile", lambda filename, _args: visited.append(os.path.normpath(filename)))
+
+    reflowAllAdocFiles(str(tmp_path), ReflowArgs(Variations(True, False)))
+
+    expected = [
+        os.path.normpath(str(root_file)),
+        os.path.normpath(str(chapter_file)),
+        os.path.normpath(str(nested_file)),
+    ]
+    assert visited == expected
+

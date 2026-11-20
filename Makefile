@@ -13,7 +13,7 @@
 # VK_VERSION_1_1 & VK_VERSION_1_0). $(VERSIONS) is converted into generator
 # script arguments $(VERSIONOPTIONS) and into $(ATTRIBFILE)
 #
-# To build the specification / reference pages (refpages) with optional
+# To build the Specification or reference pages (refpages) with optional
 # extensions included, set the $(EXTENSIONS) variable on the make
 # command line to a space-separated list of extension names.
 # $(EXTENSIONS) is converted into generator script
@@ -152,7 +152,7 @@ VERBOSE =
 # ADOCOPTS options for asciidoc->HTML5 output
 
 NOTEOPTS     = -a editing-notes -a implementation-guide
-PATCHVERSION = 368
+PATCHVERSION = 369
 BASEOPTS     =
 
 ifneq (,$(findstring VKSC_VERSION_1_0,$(VERSIONS)))
@@ -589,7 +589,7 @@ check-xrefs: $(HTMLDIR)/vkspec.html
 check-internal-phrasing: check-proposed check-gitlab
 
 # Check for UNRESOLVED or PROPOSED issues in extension appendices
-CHECK_PROPOSED = git grep -n -E 'PROPOSED|UNRESOLVED' $(SPECDIR)/appendices/
+CHECK_PROPOSED = git grep -n -E 'PROPOSED|UNRESOLVED' $(SPECDIR)/appendices/ $(SPECDIR)/proposals/VK_*.adoc
 check-proposed:
 	$(QUIET) if test `$(CHECK_PROPOSED) | wc -l` != 0 ; then \
 	    echo "PROPOSED or UNRESOLVED issues should not be published in extension appendices:" ; \
