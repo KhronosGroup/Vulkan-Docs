@@ -51,7 +51,6 @@ import importlib
 import os
 import re
 import sys
-from generator import enquote
 from reflib import loadFile, logDiag, logWarn, logErr, setLogFile, getBranch
 from pathlib import Path
 
@@ -62,6 +61,17 @@ subtitlePat = re.compile(r'^[=#]{2,} (?P<title>[A-Z].*)')
 Pages = 'pages'
 Partials = 'partials'
 Images = 'images'
+
+# Original from Vulkan 'generator.py' module, almost none of which is needed for SPIR-V
+def enquote(s):
+    """Return string argument with surrounding quotes,
+      for serialization into Python code."""
+    if s:
+        if isinstance(s, str):
+            return f"'{s}'"
+        else:
+            return s
+    return None
 
 def undefquote(s, default='undefined'):
     """Quote a string, or return a default value if the string is None."""
@@ -289,23 +299,17 @@ class DocFile:
              which all destination files are written
         """
 
-        # Load file content
-        self.srcpath = os.path.abspath(filename)
-        self.lines, _ = loadFile(self.srcpath)
-        if self.lines is None:
-            raise RuntimeError(f'No such file {self.srcpath}')
-
-        # Miscellaneous relevant paths
-        self.root = root
-        self.relpath = os.path.relpath(self.srcpath, root)
-        self.component = component
-
-        # Determine file category.
         # Only .adoc files are candidates for pages, which is verified by
         # looking at the file header for a top-level title.
         # .svg .jpg .png are always images
         # Anything else is a partial
         (_, fileext) = os.path.splitext(filename)
+
+        # Miscellaneous relevant paths
+        self.srcpath = os.path.abspath(filename)
+        self.root = root
+        self.relpath = os.path.relpath(self.srcpath, root)
+        self.component = component
 
         # Defaults
         self.title = ''
@@ -314,13 +318,21 @@ class DocFile:
 
         if fileext in (('.svg', '.jpg', '.png')):
             self.category = Images
-        elif fileext == '.adoc':
-            (self.category,
-             self.title,
-             self.titleLine,
-             self.titleAnchor) = self.findTitle()
         else:
-            self.category = Partials
+            # Load text file content
+            # In principle it is possible for a Partial to not be text,
+            # which would require changes to determine and track that.
+            self.lines, _ = loadFile(self.srcpath)
+            if self.lines is None:
+                raise RuntimeError(f'No such file {self.srcpath}')
+
+            if fileext == '.adoc':
+                (self.category,
+                 self.title,
+                 self.titleLine,
+                 self.titleAnchor) = self.findTitle()
+            else:
+                self.category = Partials
 
         # Determine destination path based on category
         # images/ are treated specially since there is only a single
@@ -337,7 +349,6 @@ class DocFile:
             # images used in the spec are required to be specified relative
             # to {images}, it is OK.
             self.dstpath = Path(self.component) / self.relpath
-
 
     def rewriteXrefs(self, pageMap = {}, xrefMap = {}, module = ''):
         """Rewrite asciidoc <<>> xrefs into Antora xref: xrefs, including
@@ -420,7 +431,7 @@ class DocFile:
 
     def __str__(self):
         lines = [
-            f'Input file {filename}: {len(self.lines)} lines',
+            f'Input file {filename}: {'BINARY' if self.lines is None else len(self.lines)} lines',
             f'root = {self.root} component = {self.component} relpath = {self.relpath}',
             f'category = {self.category} dstpath = {self.dstpath}',
             f'title = {self.title}',
@@ -479,11 +490,12 @@ class DocFile:
             self.writeFile(self.dstpath)
         elif self.category == Pages:
             if pageHeaders is not None:
-                # Add blank lines before and after the pageHeaders to avoid
+                # Add whitespace after the pageHeaders to avoid
                 # coalescing with file content.
-                lines = self.lines[0:self.titleLine+1]
-                lines += ['\n'] + pageHeaders + ['\n']
-                lines = lines + self.lines[self.titleLine+1:]
+                lines = pageHeaders + ['\n'] + self.lines
+                #lines = self.lines[0:self.titleLine+1]
+                #lines += ['\n'] + pageHeaders + ['\n']
+                #lines = lines + self.lines[self.titleLine+1:]
                 self.lines = lines
 
             # Inject page headers immediately following page title
@@ -503,6 +515,10 @@ class DocFile:
             fp = open(path, 'w', encoding='utf8')
         except:
             raise RuntimeError(f'Cannot open output file {path}')
+
+        if self.lines is None:
+            import pdb
+            pdb.set_trace()
 
         for line in self.lines:
             print(line, file=fp, end='')
@@ -579,6 +595,8 @@ if __name__ == '__main__':
                         help='Specify file containing a list of filenames to convert, one/line')
     parser.add_argument('files', metavar='filename', nargs='*',
                         help='Specify name of a single file to convert')
+    parser.add_argument('-debug', action='store_true',
+                        help='Run with Python debugger module enabled')
     parser.add_argument('-test', action='store_true',
                         help='Run simple test harness instead of converting targets')
     parser.add_argument('-verbose', action='store_true',
@@ -591,6 +609,10 @@ if __name__ == '__main__':
 
     if args.pageHeaders is not None:
         args.pageHeaders, _ = loadFile(args.pageHeaders)
+
+    if args.debug:
+        import pdb
+        pdb.set_trace()
 
     if args.test:
         testHarness()
