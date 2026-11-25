@@ -504,6 +504,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
@@ -549,6 +550,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
@@ -580,6 +582,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
@@ -614,6 +617,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
@@ -645,6 +649,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
@@ -680,6 +685,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)
@@ -801,6 +807,7 @@ def makeGenOpts(args):
             apicall           = 'VKAPI_ATTR ',
             apientry          = 'VKAPI_CALL ',
             apientryp         = 'VKAPI_PTR *',
+            nodiscard         = 'VKAPI_NODISCARD ',
             alignFuncParam    = 48,
             misracstyle       = misracstyle,
             misracppstyle     = misracppstyle)

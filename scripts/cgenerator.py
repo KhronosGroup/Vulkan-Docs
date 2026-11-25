@@ -32,6 +32,7 @@ class CGeneratorOptions(GeneratorOptions):
                  apicall='',
                  apientry='',
                  apientryp='',
+                 nodiscard='',
                  indentFuncProto=True,
                  indentFuncPointer=False,
                  alignFuncParam=0,
@@ -80,6 +81,9 @@ class CGeneratorOptions(GeneratorOptions):
         in typedefs, such as APIENTRY
         - apientryp - string to use for the calling convention macro
         in function pointer typedefs, such as APIENTRYP
+        - nodiscard - string to insert between `enum` and the type name in
+        the typedef of an enumerated type whose <type> tag has the XML
+        attribute nodiscard="true", such as VKAPI_NODISCARD
         - indentFuncProto - True if prototype declarations should put each
         parameter on a separate line
         - indentFuncPointer - True if typedefed function pointers should put each
@@ -137,6 +141,9 @@ class CGeneratorOptions(GeneratorOptions):
 
         self.apientryp = apientryp
         """string to use for the calling convention macro in function pointer typedefs, such as APIENTRYP."""
+
+        self.nodiscard = nodiscard
+        """string to insert in the typedef of enumerated types marked nodiscard="true" in the XML, such as VKAPI_NODISCARD."""
 
         self.indentFuncProto = indentFuncProto
         """True if prototype declarations should put each parameter on a separate line"""
